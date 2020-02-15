@@ -6,7 +6,8 @@ namespace Snakexperiment
     public interface IPlayerController
     {
         PlayerMovement GetMovement();
-        void Initialize();
-        void Update(SnakeGame snakeGame, GameTime gameTime);
+        void Initialize(SnakeGame snakeGame);
+        void Shutdown();
+        void Update(GameTime gameTime);
     }
 }

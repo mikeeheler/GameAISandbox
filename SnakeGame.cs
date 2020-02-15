@@ -9,7 +9,7 @@ namespace Snakexperiment
 {
     public class SnakeGame : Game
     {
-        const double TICK_RATE = 0.125;
+        const double TICK_RATE = 10.0 / 60;
 
         const int FIELD_HEIGHT = 20;
         const int FIELD_WIDTH = 20;
@@ -18,11 +18,11 @@ namespace Snakexperiment
         const string QUIT_MESSAGE = "Q to quit";
         const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
 
+        private readonly Random _rng;
+
         private Vector2 _gameOverMessagePos;
         private Vector2 _quitMessagePos;
         private Vector2 _tryAgainMessagePos;
-
-        private readonly Random _rng;
 
         private SpriteBatch _spriteBatch;
         private SpriteFont _uiFont;
@@ -35,6 +35,7 @@ namespace Snakexperiment
         private Point _lastDirection;
         private Point _lastPosition;
         private TimeSpan _lastTick;
+        private int _ticks;
 
         private bool _alive;
         private Point _applePosition;
@@ -49,8 +50,8 @@ namespace Snakexperiment
         {
             _ = new GraphicsDeviceManager(this)
             {
-                PreferredBackBufferHeight = 600,
-                PreferredBackBufferWidth = 800,
+                PreferredBackBufferHeight = 720,
+                PreferredBackBufferWidth = 1280,
                 PreferHalfPixelOffset = true,
                 PreferMultiSampling = true,
                 SynchronizeWithVerticalRetrace = true
@@ -58,7 +59,9 @@ namespace Snakexperiment
             _rng = new Random();
             _fieldTopLeft = new Point(0, 0);
 
-            IsFixedTimeStep = true;
+            _ticks = 0;
+
+            IsFixedTimeStep = false;
             IsMouseVisible = true;
 
             Content.RootDirectory = "Content";
@@ -101,9 +104,11 @@ namespace Snakexperiment
 
         protected override void Update(GameTime gameTime)
         {
+            _ticks++;
+
             HandleKeyPress(Keyboard.GetState());
 
-            _player.Update(this, gameTime);
+            _player.Update(gameTime);
 
             TimeSpan diff = gameTime.TotalGameTime - _lastTick;
             if (diff.TotalSeconds >= TICK_RATE)
@@ -123,9 +128,15 @@ namespace Snakexperiment
 
             DrawField();
             DrawEntities();
-            DrawUI(fps);
+            DrawUI(fps, gameTime.TotalGameTime.TotalMilliseconds);
 
             base.Draw(gameTime);
+        }
+
+        protected override void OnExiting(object sender, EventArgs args)
+        {
+            _player.Shutdown();
+            base.OnExiting(sender, args);
         }
 
         private void DrawField()
@@ -167,13 +178,13 @@ namespace Snakexperiment
             _spriteBatch.End();
         }
 
-        private void DrawUI(double fps)
+        private void DrawUI(double fps, double gameTime)
         {
             _spriteBatch.Begin();
 
             _spriteBatch.DrawString(_uiFont, QUIT_MESSAGE, _quitMessagePos, Color.LightGray);
 
-            string scoreMessage = $"size: {_snakeSize:N0}; fps: {fps:N0}";
+            string scoreMessage = $"size: {_snakeSize:N0}; fps: {fps:N0}; tavg: {gameTime/_ticks:N2}";
             Point scoreMessageSize = _uiFont.MeasureString(scoreMessage).ToPoint();
             Point scoreMessagePosition = Window.ClientBounds.Size - scoreMessageSize;
             _spriteBatch.DrawString(_uiFont, scoreMessage, scoreMessagePosition.ToVector2(), Color.LightGray);
@@ -237,8 +248,10 @@ namespace Snakexperiment
             _snake = new Queue<Point>(FIELD_WIDTH * FIELD_HEIGHT);
             _snake.Enqueue(_lastPosition);
             _snakeSize = 10;
+
+            _player?.Shutdown();
             _player = new HumanPlayer();
-            _player.Initialize();
+            _player.Initialize(this);
         }
 
         private void UpdateEntities(TimeSpan _)
