@@ -14,6 +14,14 @@ namespace Snakexperiment
         const int FIELD_HEIGHT = 20;
         const int FIELD_WIDTH = 20;
 
+        const string GAME_OVER_MESSAGE = "GAME OVER";
+        const string QUIT_MESSAGE = "Q to quit";
+        const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
+
+        private Vector2 _gameOverMessagePos;
+        private Vector2 _quitMessagePos;
+        private Vector2 _tryAgainMessagePos;
+
         private readonly Random _rng;
 
         private SpriteBatch _spriteBatch;
@@ -161,19 +169,21 @@ namespace Snakexperiment
 
         private void DrawUI(double fps)
         {
+            _spriteBatch.Begin();
+
+            _spriteBatch.DrawString(_uiFont, QUIT_MESSAGE, _quitMessagePos, Color.LightGray);
+
             string scoreMessage = $"size: {_snakeSize:N0}; fps: {fps:N0}";
             Point scoreMessageSize = _uiFont.MeasureString(scoreMessage).ToPoint();
             Point scoreMessagePosition = Window.ClientBounds.Size - scoreMessageSize;
+            _spriteBatch.DrawString(_uiFont, scoreMessage, scoreMessagePosition.ToVector2(), Color.LightGray);
 
-            _spriteBatch.Begin();
             if (!_alive)
             {
-                const string resetMessage = "     GAME OVER\nPress SPACE to reset";
-                Point resetMessageSize = _uiFont.MeasureString(resetMessage).ToPoint();
-                Point resetMessagePosition = Window.ClientBounds.Size - resetMessageSize;
-                _spriteBatch.DrawString(_uiFont, resetMessage, resetMessagePosition.ToVector2() / 2, Color.LightGoldenrodYellow);
+                _spriteBatch.DrawString(_uiFont, GAME_OVER_MESSAGE, _gameOverMessagePos, Color.LightGoldenrodYellow);
+                _spriteBatch.DrawString(_uiFont, TRY_AGAIN_MESSAGE, _tryAgainMessagePos, Color.LightGoldenrodYellow);
             }
-            _spriteBatch.DrawString(_uiFont, scoreMessage, scoreMessagePosition.ToVector2(), Color.LightGray);
+
             _spriteBatch.End();
         }
 
@@ -202,6 +212,19 @@ namespace Snakexperiment
 
             _fieldTopLeft.X = (windowWidth - fieldWidth) / 2;
             _fieldTopLeft.Y = (windowHeight - fieldHeight) / 2;
+
+            Vector2 gameOverMessageSize = _uiFont.MeasureString(GAME_OVER_MESSAGE);
+            _gameOverMessagePos = new Vector2(
+                (windowWidth - gameOverMessageSize.X) / 2,
+                windowHeight / 2 - gameOverMessageSize.Y);
+
+            Vector2 quitMessageSize = _uiFont.MeasureString(QUIT_MESSAGE);
+            _quitMessagePos = new Vector2(0.0f, windowHeight - quitMessageSize.Y);
+
+            Vector2 tryAgainMessageSize = _uiFont.MeasureString(TRY_AGAIN_MESSAGE);
+            _tryAgainMessagePos = new Vector2(
+                (windowWidth - tryAgainMessageSize.X) / 2,
+                windowHeight / 2);
         }
 
         private void Reset()
