@@ -10,14 +10,12 @@ namespace Snakexperiment
     public class SnakeGame : Game
     {
         const double TICK_RATE = 0.125;
-        const int FIELD_HEIGHT = 38;
-        const int FIELD_WIDTH = 50;
+
+        const int FIELD_HEIGHT = 20;
+        const int FIELD_WIDTH = 20;
 
         private readonly Random _rng;
 
-        private TimeSpan _lastTick;
-
-        private GraphicsDeviceManager _graphics;
         private SpriteBatch _spriteBatch;
         private SpriteFont _uiFont;
 
@@ -26,42 +24,42 @@ namespace Snakexperiment
         private Texture2D _snakeDeadTexture;
         private Texture2D _tileTexture;
 
-        private Vector2 _direction;
-        private Vector2 _lastPosition;
-        private Vector2 _applePosition;
-        private Queue<Vector2> _snake;
-        private int _snakeSize;
+        private Point _lastDirection;
+        private Point _lastPosition;
+        private TimeSpan _lastTick;
+
         private bool _alive;
+        private Point _applePosition;
+        private Point _direction;
+        private Point _fieldTopLeft;
+        private Queue<Point> _snake;
+        private int _snakeSize;
 
         public SnakeGame()
         {
-            _graphics = new GraphicsDeviceManager(this)
+            _ = new GraphicsDeviceManager(this)
             {
-                PreferredBackBufferHeight = FIELD_HEIGHT * 16,
-                PreferredBackBufferWidth = FIELD_WIDTH * 16,
+                PreferredBackBufferHeight = 600,
+                PreferredBackBufferWidth = 800,
                 PreferHalfPixelOffset = true,
                 PreferMultiSampling = true,
                 SynchronizeWithVerticalRetrace = true
             };
             _rng = new Random();
+            _fieldTopLeft = new Point(0, 0);
 
             IsFixedTimeStep = false;
             IsMouseVisible = true;
 
             Content.RootDirectory = "Content";
+            Window.AllowUserResizing = true;
+            Window.ClientSizeChanged += OnResize;
         }
 
         protected override void Initialize()
         {
-            _applePosition = new Vector2(_rng.Next(FIELD_WIDTH), _rng.Next(FIELD_HEIGHT));
-            _alive = true;
-            _direction = new Vector2(1, 0);
-            _snake = new Queue<Vector2>(FIELD_WIDTH * FIELD_HEIGHT);
-            _snake.Enqueue(_lastPosition);
-            _snakeSize = 10;
-
-            _lastPosition = Vector2.Zero;
             _lastTick = TimeSpan.Zero;
+            Reset();
 
             base.Initialize();
         }
@@ -75,79 +73,19 @@ namespace Snakexperiment
             _snakeDeadTexture = Content.Load<Texture2D>("dead");
             _tileTexture = Content.Load<Texture2D>("tile");
             _uiFont = Content.Load<SpriteFont>("CascadiaMono");
+
+            OnResize(null, EventArgs.Empty);
         }
 
         protected override void Update(GameTime gameTime)
         {
-            var keyState = Keyboard.GetState();
+            HandleKeyPress(Keyboard.GetState());
 
-            if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed
-                || keyState.IsKeyDown(Keys.Escape)
-                || keyState.IsKeyDown(Keys.Q))
+            TimeSpan diff = gameTime.TotalGameTime - _lastTick;
+            if (diff.TotalSeconds >= TICK_RATE)
             {
-                Exit();
-            }
-
-            if (_direction.X == 0)
-            {
-                if (keyState.IsKeyDown(Keys.A) || keyState.IsKeyDown(Keys.Left))
-                {
-                    _direction.X = -1;
-                    _direction.Y = 0;
-                }
-                else if (keyState.IsKeyDown(Keys.D) || keyState.IsKeyDown(Keys.Right))
-                {
-                    _direction.X = 1;
-                    _direction.Y = 0;
-                }
-            }
-            else if (_direction.Y == 0)
-            {
-                if (keyState.IsKeyDown(Keys.W) || keyState.IsKeyDown(Keys.Up))
-                {
-                    _direction.X = 0;
-                    _direction.Y = -1;
-                }
-                else if (keyState.IsKeyDown(Keys.S) || keyState.IsKeyDown(Keys.Down))
-                {
-                    _direction.X = 0;
-                    _direction.Y = 1;
-                }
-            }
-
-            if (_alive)
-            {
-                TimeSpan diff = gameTime.TotalGameTime - _lastTick;
-                if (diff.TotalSeconds >= TICK_RATE)
-                {
-                    Vector2 newPosition = _lastPosition + _direction;
-                    if (newPosition.Y < 0
-                        || newPosition.Y >= FIELD_HEIGHT
-                        || newPosition.X < 0
-                        || newPosition.X >= FIELD_WIDTH
-                        || _snake.Contains(newPosition))
-                    {
-                        _alive = false;
-                    }
-                    else
-                    {
-                        if (newPosition == _applePosition)
-                        {
-                            _snakeSize += 5;
-                            do
-                            {
-                                _applePosition.X = _rng.Next(FIELD_WIDTH);
-                                _applePosition.Y = _rng.Next(FIELD_HEIGHT);
-                            } while (_snake.Contains(_applePosition));
-                        }
-
-                        while (_snake.Count >= _snakeSize)
-                            _snake.Dequeue();
-                        _snake.Enqueue(newPosition);
-                        _lastPosition = newPosition;
-                        _lastTick = gameTime.TotalGameTime;
-                    }
-                }
+                UpdateEntities(diff);
+                _lastTick = gameTime.TotalGameTime;
             }
 
             base.Update(gameTime);
@@ -155,27 +93,55 @@ namespace Snakexperiment
 
         protected override void Draw(GameTime gameTime)
         {
-            GraphicsDevice.Clear(Color.DimGray);
+            GraphicsDevice.Clear(Color.Black);
 
             float fps = (float)(1000.0 / gameTime.ElapsedGameTime.TotalMilliseconds);
 
+            DrawField();
+            DrawEntities();
+            DrawUI(fps);
+
+            base.Draw(gameTime);
+        }
+
+        private void DrawField()
+        {
+            Point tilePosition = Point.Zero;
+
             _spriteBatch.Begin();
-            for (int y = 0; y < FIELD_HEIGHT / 2 + 1; ++y) {
-                for (int x = 0; x < FIELD_WIDTH / 2 + 1; ++x) {
-                    _spriteBatch.Draw(_tileTexture, new Vector2(x * _tileTexture.Width, y * _tileTexture.Height), Color.White);
+            for (tilePosition.Y = 0; tilePosition.Y < FIELD_HEIGHT / 2; ++tilePosition.Y)
+            {
+                for (tilePosition.X = 0; tilePosition.X < FIELD_WIDTH / 2; ++tilePosition.X)
+                {
+                    _spriteBatch.Draw(
+                        _tileTexture,
+                        (_fieldTopLeft + tilePosition * _tileTexture.Bounds.Size).ToVector2(),
+                        Color.White);
                 }
             }
             _spriteBatch.End();
+        }
 
+        private void DrawEntities()
+        {
             _spriteBatch.Begin();
-            _spriteBatch.Draw(_appleTexture, _applePosition * _appleTexture.Width, Color.White);
+            _spriteBatch.Draw(
+                _appleTexture,
+                (_fieldTopLeft + _applePosition * _appleTexture.Bounds.Size).ToVector2(),
+                Color.White);
             Texture2D square = _alive ? _snakeAliveTexture : _snakeDeadTexture;
-            foreach (Vector2 snakePiece in _snake)
+            foreach (Point snakePiece in _snake)
             {
-                _spriteBatch.Draw(square, snakePiece * square.Width, Color.White);
+                _spriteBatch.Draw(
+                    square,
+                    (_fieldTopLeft + snakePiece * square.Bounds.Size).ToVector2(),
+                    Color.White);
             }
             _spriteBatch.End();
+        }
 
+        private void DrawUI(double fps)
+        {
             string uiMessage = $"size: {_snakeSize:N0}; fps: {fps:N0}";
             var messageSize = _uiFont.MeasureString(uiMessage);
 
@@ -183,11 +149,109 @@ namespace Snakexperiment
             _spriteBatch.DrawString(
                 _uiFont,
                 uiMessage,
-                new Vector2(800 - messageSize.X, 608 - messageSize.Y),
+                new Vector2(Window.ClientBounds.Width - messageSize.X, Window.ClientBounds.Height - messageSize.Y),
                 Color.LightGray);
             _spriteBatch.End();
+        }
 
-            base.Draw(gameTime);
+        private void HandleKeyPress(KeyboardState keyboardState)
+        {
+            if (keyboardState.IsKeyDown(Keys.Escape) || keyboardState.IsKeyDown(Keys.Q))
+            {
+                Exit();
+                return;
+            }
+
+            if (!_alive && keyboardState.IsKeyDown(Keys.Space))
+            {
+                Reset();
+                return;
+            }
+
+            if (_lastDirection.X == 0)
+            {
+                if (keyboardState.IsKeyDown(Keys.A) || keyboardState.IsKeyDown(Keys.Left))
+                {
+                    _direction.X = -1;
+                    _direction.Y = 0;
+                }
+                else if (keyboardState.IsKeyDown(Keys.D) || keyboardState.IsKeyDown(Keys.Right))
+                {
+                    _direction.X = 1;
+                    _direction.Y = 0;
+                }
+            }
+            else if (_lastDirection.Y == 0)
+            {
+                if (keyboardState.IsKeyDown(Keys.W) || keyboardState.IsKeyDown(Keys.Up))
+                {
+                    _direction.X = 0;
+                    _direction.Y = -1;
+                }
+                else if (keyboardState.IsKeyDown(Keys.S) || keyboardState.IsKeyDown(Keys.Down))
+                {
+                    _direction.X = 0;
+                    _direction.Y = 1;
+                }
+            }
+        }
+
+        private void OnResize(object sender, EventArgs e)
+        {
+            int windowHeight = Window.ClientBounds.Height;
+            int windowWidth = Window.ClientBounds.Width;
+
+            int fieldHeight = FIELD_HEIGHT * _tileTexture.Height / 2;
+            int fieldWidth = FIELD_WIDTH * _tileTexture.Width / 2;
+
+            _fieldTopLeft.X = (windowWidth - fieldWidth) / 2;
+            _fieldTopLeft.Y = (windowHeight - fieldHeight) / 2;
+        }
+
+        private void Reset()
+        {
+            _applePosition = new Point(_rng.Next(FIELD_WIDTH), _rng.Next(FIELD_HEIGHT));
+            _alive = true;
+            _direction = new Point(1, 0);
+            _lastDirection = _direction;
+            _lastPosition = Point.Zero;
+            _snake = new Queue<Point>(FIELD_WIDTH * FIELD_HEIGHT);
+            _snake.Enqueue(_lastPosition);
+            _snakeSize = 10;
+        }
+
+        private void UpdateEntities(TimeSpan _)
+        {
+            if (!_alive)
+                return;
+
+            Point newPosition = _lastPosition + _direction;
+            if (newPosition.Y < 0
+                || newPosition.Y >= FIELD_HEIGHT
+                || newPosition.X < 0
+                || newPosition.X >= FIELD_WIDTH
+                || _snake.Contains(newPosition))
+            {
+                _alive = false;
+                return;
+            }
+
+            if (newPosition == _applePosition)
+            {
+                _snakeSize += 5;
+                do
+                {
+                    _applePosition.X = _rng.Next(FIELD_WIDTH);
+                    _applePosition.Y = _rng.Next(FIELD_HEIGHT);
+                } while (_snake.Contains(_applePosition));
+            }
+
+            while (_snake.Count >= _snakeSize)
+                _snake.Dequeue();
+            _snake.Enqueue(newPosition);
+
+            _lastDirection = _direction;
+            _lastPosition = newPosition;
         }
     }
 }
