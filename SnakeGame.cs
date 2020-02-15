@@ -35,6 +35,8 @@ namespace Snakexperiment
         private Queue<Point> _snake;
         private int _snakeSize;
 
+        private IPlayerController _player;
+
         public SnakeGame()
         {
             _ = new GraphicsDeviceManager(this)
@@ -48,12 +50,24 @@ namespace Snakexperiment
             _rng = new Random();
             _fieldTopLeft = new Point(0, 0);
 
-            IsFixedTimeStep = false;
+            IsFixedTimeStep = true;
             IsMouseVisible = true;
 
             Content.RootDirectory = "Content";
             Window.AllowUserResizing = true;
             Window.ClientSizeChanged += OnResize;
+        }
+
+        public bool IsLegalMove(PlayerMovement move)
+        {
+            return move switch
+            {
+                PlayerMovement.Down => _lastDirection.Y != -1,
+                PlayerMovement.Left => _lastDirection.X != 1,
+                PlayerMovement.Right => _lastDirection.X != -1,
+                PlayerMovement.Up => _lastDirection.Y != 1,
+                _ => throw new ArgumentOutOfRangeException(nameof(move), move, ""),
+            };
         }
 
         protected override void Initialize()
@@ -80,6 +94,8 @@ namespace Snakexperiment
         protected override void Update(GameTime gameTime)
         {
             HandleKeyPress(Keyboard.GetState());
+
+            _player.Update(this, gameTime);
 
             TimeSpan diff = gameTime.TotalGameTime - _lastTick;
             if (diff.TotalSeconds >= TICK_RATE)
@@ -130,27 +146,34 @@ namespace Snakexperiment
                 (_fieldTopLeft + _applePosition * _appleTexture.Bounds.Size).ToVector2(),
                 Color.White);
             Texture2D square = _alive ? _snakeAliveTexture : _snakeDeadTexture;
+            int pieceCount = 0;
             foreach (Point snakePiece in _snake)
             {
+                float ratio = Convert.ToSingle((double)pieceCount / _snake.Count) * 0.5f + 0.5f;
                 _spriteBatch.Draw(
                     square,
                     (_fieldTopLeft + snakePiece * square.Bounds.Size).ToVector2(),
-                    Color.White);
+                    new Color(ratio, ratio, ratio));
+                ++pieceCount;
             }
             _spriteBatch.End();
         }
 
         private void DrawUI(double fps)
         {
-            string uiMessage = $"size: {_snakeSize:N0}; fps: {fps:N0}";
-            var messageSize = _uiFont.MeasureString(uiMessage);
+            string scoreMessage = $"size: {_snakeSize:N0}; fps: {fps:N0}";
+            Point scoreMessageSize = _uiFont.MeasureString(scoreMessage).ToPoint();
+            Point scoreMessagePosition = Window.ClientBounds.Size - scoreMessageSize;
 
             _spriteBatch.Begin();
-            _spriteBatch.DrawString(
-                _uiFont,
-                uiMessage,
-                new Vector2(Window.ClientBounds.Width - messageSize.X, Window.ClientBounds.Height - messageSize.Y),
-                Color.LightGray);
+            if (!_alive)
+            {
+                const string resetMessage = "     GAME OVER\nPress SPACE to reset";
+                Point resetMessageSize = _uiFont.MeasureString(resetMessage).ToPoint();
+                Point resetMessagePosition = Window.ClientBounds.Size - resetMessageSize;
+                _spriteBatch.DrawString(_uiFont, resetMessage, resetMessagePosition.ToVector2() / 2, Color.LightGoldenrodYellow);
+            }
+            _spriteBatch.DrawString(_uiFont, scoreMessage, scoreMessagePosition.ToVector2(), Color.LightGray);
             _spriteBatch.End();
         }
 
@@ -166,33 +189,6 @@ namespace Snakexperiment
             {
                 Reset();
                 return;
-            }
-
-            if (_lastDirection.X == 0)
-            {
-                if (keyboardState.IsKeyDown(Keys.A) || keyboardState.IsKeyDown(Keys.Left))
-                {
-                    _direction.X = -1;
-                    _direction.Y = 0;
-                }
-                else if (keyboardState.IsKeyDown(Keys.D) || keyboardState.IsKeyDown(Keys.Right))
-                {
-                    _direction.X = 1;
-                    _direction.Y = 0;
-                }
-            }
-            else if (_lastDirection.Y == 0)
-            {
-                if (keyboardState.IsKeyDown(Keys.W) || keyboardState.IsKeyDown(Keys.Up))
-                {
-                    _direction.X = 0;
-                    _direction.Y = -1;
-                }
-                else if (keyboardState.IsKeyDown(Keys.S) || keyboardState.IsKeyDown(Keys.Down))
-                {
-                    _direction.X = 0;
-                    _direction.Y = 1;
-                }
             }
         }
 
@@ -218,12 +214,21 @@ namespace Snakexperiment
             _snake = new Queue<Point>(FIELD_WIDTH * FIELD_HEIGHT);
             _snake.Enqueue(_lastPosition);
             _snakeSize = 10;
+            _player = new HumanPlayer();
         }
 
         private void UpdateEntities(TimeSpan _)
         {
             if (!_alive)
                 return;
+
+            switch (_player.GetMovement())
+            {
+                case PlayerMovement.Down: _direction.X = 0; _direction.Y = 1; break;
+                case PlayerMovement.Left: _direction.X = -1; _direction.Y = 0; break;
+                case PlayerMovement.Right: _direction.X = 1; _direction.Y = 0; break;
+                case PlayerMovement.Up: _direction.X = 0; _direction.Y = -1; break;
+            }
 
             Point newPosition = _lastPosition + _direction;
             if (newPosition.Y < 0
