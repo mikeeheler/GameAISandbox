@@ -215,6 +215,7 @@ namespace Snakexperiment
             _snake.Enqueue(_lastPosition);
             _snakeSize = 10;
             _player = new HumanPlayer();
+            _player.Initialize();
         }
 
         private void UpdateEntities(TimeSpan _)
