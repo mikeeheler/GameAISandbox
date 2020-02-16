@@ -9,7 +9,7 @@ namespace Snakexperiment
 {
     public class SnakeGame : Game
     {
-        const double TICK_RATE = 10.0 / 60;
+        const double TICK_RATE = 0.125;
 
         const int FIELD_HEIGHT = 20;
         const int FIELD_WIDTH = 20;
@@ -19,6 +19,7 @@ namespace Snakexperiment
         const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
 
         private readonly Random _rng;
+        private readonly int[] _board;
 
         private Vector2 _gameOverMessagePos;
         private Vector2 _quitMessagePos;
@@ -56,6 +57,7 @@ namespace Snakexperiment
                 PreferMultiSampling = true,
                 SynchronizeWithVerticalRetrace = true
             };
+            _board = new int[FIELD_HEIGHT * FIELD_WIDTH];
             _rng = new Random();
             _fieldTopLeft = new Point(0, 0);
 
@@ -67,6 +69,16 @@ namespace Snakexperiment
             Content.RootDirectory = "Content";
             Window.AllowUserResizing = true;
             Window.ClientSizeChanged += OnResize;
+        }
+
+        public int FieldHeight { get; } = FIELD_HEIGHT;
+        public int FieldWidth { get; } = FIELD_WIDTH;
+
+        public int[] GetBoardValue()
+        {
+            var result = new int[_board.Length];
+            Array.Copy(_board, result, _board.Length);
+            return result;
         }
 
         public bool IsLegalMove(PlayerMovement move)
@@ -116,6 +128,8 @@ namespace Snakexperiment
                 UpdateEntities(diff);
                 _lastTick = gameTime.TotalGameTime;
             }
+
+            UpdateBoard();
 
             base.Update(gameTime);
         }
@@ -252,6 +266,24 @@ namespace Snakexperiment
             _player?.Shutdown();
             _player = new HumanPlayer();
             _player.Initialize(this);
+        }
+
+        private void UpdateBoard()
+        {
+            for (int y = 0; y < FIELD_HEIGHT; ++y)
+            {
+                for (int x = 0; x < FIELD_WIDTH; ++x)
+                {
+                    _board[y * FIELD_HEIGHT + x] = 0;
+                }
+            }
+
+            static int GetIndex(Point point)
+                => point.Y * FIELD_HEIGHT + point.X;
+
+            _board[GetIndex(_applePosition)] = 1;
+            foreach (Point snakePiece in _snake)
+                _board[GetIndex(snakePiece)] = -1;
         }
 
         private void UpdateEntities(TimeSpan _)
