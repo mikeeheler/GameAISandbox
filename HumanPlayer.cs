@@ -18,6 +18,8 @@ namespace Snakexperiment
             _inputSync = new object();
         }
 
+        public bool IsHuman { get; } = true;
+
         public void Initialize(SnakeGame snakeGame)
         {
             _desiredMove = PlayerMovement.Right;
@@ -38,10 +40,6 @@ namespace Snakexperiment
         {
             _pollInput = false;
             _inputPollThread.Join();
-        }
-
-        public void Update(GameTime _)
-        {
         }
 
         private void PollInput(object parameter)

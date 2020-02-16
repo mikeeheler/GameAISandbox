@@ -1,128 +1,134 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 
+using MathNet.Numerics.Distributions;
+using MathNet.Numerics.LinearAlgebra;
 using Microsoft.Xna.Framework;
 
 namespace Snakexperiment
 {
     public class AIPlayer : IPlayerController
     {
+        private SnakeGame _snakeGame;
+        private AIPlayerBrain _brain;
+        private PlayerMovement _nextMove;
+
         public AIPlayer()
         {
         }
 
+        public bool IsHuman { get; } = false;
+
         public PlayerMovement GetMovement()
-        {
-            throw new System.NotImplementedException();
-        }
+            => GetNextMove();
 
         public void Initialize(SnakeGame snakeGame)
         {
-            var baseLayer = new NeuralLayer(snakeGame.FieldHeight * snakeGame.FieldWidth + 1, 1.0f);
-            var outputs = new NeuralLayer(3, 0.0f);
-
-            baseLayer.LinkTo(outputs);
-
-            throw new System.NotImplementedException();
+            _snakeGame = snakeGame;
+            _brain = new AIPlayerBrain();
+            _nextMove = PlayerMovement.Right;
+            _nextMove = GetNextMove();
         }
 
         public void Shutdown()
         {
-            throw new System.NotImplementedException();
         }
 
-        public void Update(GameTime gameTime)
+        private PlayerMovement GetNextMove()
         {
-            throw new System.NotImplementedException();
+            var direction = PointToVector(_snakeGame.Direction);
+            var applePosition = PointToVector(_snakeGame.ApplePosition);
+            var appleVector = applePosition - direction;
+            var result = _brain.Compute(
+                direction[0],
+                direction[1],
+                appleVector[0],
+                appleVector[1],
+                _snakeGame.IsLegalMove(PlayerMovement.Down) ? 1 : -1,
+                _snakeGame.IsLegalMove(PlayerMovement.Left) ? 1 : -1,
+                _snakeGame.IsLegalMove(PlayerMovement.Right) ? 1 : -1,
+                _snakeGame.IsLegalMove(PlayerMovement.Up) ? 1 : -1);
+            var values = Vector<float>.Build.Dense(result);
+            int index =  values.MaximumIndex();
+
+            return index switch
+            {
+                0 => PlayerMovement.Down,
+                1 => PlayerMovement.Left,
+                2 => PlayerMovement.Right,
+                3 => PlayerMovement.Up,
+                _ => throw new ArgumentOutOfRangeException()
+            };
         }
+
+        private Vector<double> PointToVector(Point point)
+            => Vector<double>.Build.Dense(new double[] { point.X, point.Y });
     }
 
-    public class Synapse
+    public class AIPlayerBrain
     {
-        private readonly List<(Synapse, float)> _inputs;
-        private readonly NeuralLayer _owner;
+        private readonly int _inputSize = 8;
+        private readonly int _layer1Size = 12;
+        private readonly int _layer2Size = 12;
+        private readonly int _outputSize = 4;
 
-        public Synapse(NeuralLayer owner, float initialValue)
+        private readonly Matrix<double> _layer1Bias;
+        private readonly Matrix<double> _layer2Bias;
+        private readonly Matrix<double> _layer3Bias;
+        private readonly Matrix<double> _layer1Weights;
+        private readonly Matrix<double> _layer2Weights;
+        private readonly Matrix<double> _layer3Weights;
+
+        private Matrix<double> _layer1Values;
+        private Matrix<double> _layer2Values;
+        private Matrix<double> _layer3Values;
+
+        public AIPlayerBrain()
         {
-            _inputs = new List<(Synapse, float)>();
-            _owner = owner;
-            Value = initialValue;
+            // mathnet indices: row,col
+            // mathnet mem: col maj
+
+            double bias = -1.0;
+
+            _layer1Bias = Matrix<double>.Build.Dense(1, _layer1Size, bias);
+            _layer2Bias = Matrix<double>.Build.Dense(1, _layer2Size, bias);
+            _layer3Bias = Matrix<double>.Build.Dense(1, _outputSize, bias);
+            _layer1Weights = Matrix<double>.Build.Random(_inputSize, _layer1Size, new Normal(0.0, 1.0));
+            _layer2Weights = Matrix<double>.Build.Random(_layer1Size, _layer2Size, new Normal(0.0, 1.0));
+            _layer3Weights = Matrix<double>.Build.Random(_layer2Size, _outputSize, new Normal(0.0, 1.0));
         }
 
-        public IReadOnlyCollection<(Synapse, float)> Inputs => _inputs;
-        public float Value { get; private set; }
-
-        public void ClearInputs()
+        public float[] Compute(params double[] inputs)
         {
-            _inputs.Clear();
+            var inputValues = Matrix<double>.Build.DenseOfRowArrays(inputs);
+
+            _layer1Values = Tanh(inputValues * _layer1Weights + _layer1Bias);
+            _layer2Values = Tanh(_layer1Values * _layer2Weights + _layer2Bias);
+            _layer3Values = Tanh(_layer2Values * _layer3Weights + _layer3Bias);
+
+            return _layer3Values.ToColumnMajorArray().Select(i => (float)i).ToArray();
         }
 
-        public void Compute(float value)
+        private Matrix<double> Tanh(Matrix<double> input)
         {
-            Value = (float)(1.0 / (1.0 + Math.Pow(MathHelper.E, value)));
+            return input.PointwiseTanh();
         }
 
-        public void LinkTo(Synapse other, float weight)
+        private Matrix<double> Sigmoid(Matrix<double> input)
         {
-            if (other._owner == _owner)
-                throw new ArgumentException(nameof(other));
-
-            other._inputs.Add((this, weight));
+            return Matrix<double>.Build.Dense(
+                input.RowCount,
+                input.ColumnCount,
+                (row, col) => 1.0 / (1.0 + Math.Pow(MathHelper.E, -input[row,col])));
         }
 
-        public void SetValue(float value)
+        private Matrix<double> ReLU(Matrix<double> input)
         {
-            Value = value;
-        }
-    }
-
-    public class NeuralLayer
-    {
-        private readonly List<Synapse> _synapses;
-        private NeuralLayer _nextLayer;
-        private NeuralLayer _previousLayer;
-
-        public NeuralLayer(int synapseCount, float bias)
-        {
-            _synapses = new List<Synapse>(synapseCount + 1);
-            for (int i = 0; i < synapseCount; ++i)
-                _synapses.Add(new Synapse(this, 0.0f));
-            _synapses.Add(new Synapse(this, bias));
-        }
-
-        public void Compute()
-        {
-            if (_previousLayer != null)
-            {
-                foreach (var synapse in _synapses)
-                {
-                    float sum = 0.0f;
-                    foreach (var inputSynapse in synapse.Inputs)
-                    {
-                        sum += inputSynapse.Item1.Value * inputSynapse.Item2;
-                    }
-                    synapse.Compute(sum);
-                }
-            }
-            _nextLayer.Compute();
-        }
-
-        public void LinkTo(NeuralLayer nextLayer)
-        {
-            if (_nextLayer != null)
-            {
-                foreach (var nextSynapse in _nextLayer._synapses)
-                    nextSynapse.ClearInputs();
-                nextLayer.LinkTo(_nextLayer);
-            }
-
-            _nextLayer = nextLayer;
-            nextLayer._previousLayer = this;
-
-            foreach (var nextSynapse in _nextLayer._synapses)
-                foreach (var synapse in _synapses)
-                    synapse.LinkTo(nextSynapse, 1.0f);
+            return input;
+            /*return Matrix<double>.Build.Dense(
+                input.RowCount,
+                input.ColumnCount,
+                (row, col) => Math.Clamp(input[row,col], 0.0, 1.0));*/
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
+using MathNet.Numerics.LinearAlgebra;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -19,7 +20,6 @@ namespace Snakexperiment
         const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
 
         private readonly Random _rng;
-        private readonly int[] _board;
 
         private Vector2 _gameOverMessagePos;
         private Vector2 _quitMessagePos;
@@ -44,7 +44,6 @@ namespace Snakexperiment
         private Point _fieldTopLeft;
         private Queue<Point> _snake;
         private int _snakeSize;
-
         private IPlayerController _player;
 
         public SnakeGame()
@@ -57,7 +56,6 @@ namespace Snakexperiment
                 PreferMultiSampling = true,
                 SynchronizeWithVerticalRetrace = true
             };
-            _board = new int[FIELD_HEIGHT * FIELD_WIDTH];
             _rng = new Random();
             _fieldTopLeft = new Point(0, 0);
 
@@ -74,12 +72,9 @@ namespace Snakexperiment
         public int FieldHeight { get; } = FIELD_HEIGHT;
         public int FieldWidth { get; } = FIELD_WIDTH;
 
-        public int[] GetBoardValue()
-        {
-            var result = new int[_board.Length];
-            Array.Copy(_board, result, _board.Length);
-            return result;
-        }
+        public int Score => _snake.Count;
+        public Point ApplePosition => _applePosition;
+        public Point Direction => _lastDirection;
 
         public bool IsLegalMove(PlayerMovement move)
         {
@@ -120,16 +115,18 @@ namespace Snakexperiment
 
             HandleKeyPress(Keyboard.GetState());
 
-            _player.Update(gameTime);
-
             TimeSpan diff = gameTime.TotalGameTime - _lastTick;
             if (diff.TotalSeconds >= TICK_RATE)
             {
                 UpdateEntities(diff);
+
+                if (!_alive && !_player.IsHuman)
+                {
+
+                }
+
                 _lastTick = gameTime.TotalGameTime;
             }
-
-            UpdateBoard();
 
             base.Update(gameTime);
         }
@@ -254,7 +251,10 @@ namespace Snakexperiment
 
         private void Reset()
         {
-            _applePosition = new Point(_rng.Next(FIELD_WIDTH), _rng.Next(FIELD_HEIGHT));
+            do
+            {
+                _applePosition = new Point(_rng.Next(FIELD_WIDTH), _rng.Next(FIELD_HEIGHT));
+            } while (_applePosition == Point.Zero);
             _alive = true;
             _direction = new Point(1, 0);
             _lastDirection = _direction;
@@ -264,26 +264,8 @@ namespace Snakexperiment
             _snakeSize = 10;
 
             _player?.Shutdown();
-            _player = new HumanPlayer();
+            _player = new AIPlayer();
             _player.Initialize(this);
-        }
-
-        private void UpdateBoard()
-        {
-            for (int y = 0; y < FIELD_HEIGHT; ++y)
-            {
-                for (int x = 0; x < FIELD_WIDTH; ++x)
-                {
-                    _board[y * FIELD_HEIGHT + x] = 0;
-                }
-            }
-
-            static int GetIndex(Point point)
-                => point.Y * FIELD_HEIGHT + point.X;
-
-            _board[GetIndex(_applePosition)] = 1;
-            foreach (Point snakePiece in _snake)
-                _board[GetIndex(snakePiece)] = -1;
         }
 
         private void UpdateEntities(TimeSpan _)
@@ -310,6 +292,10 @@ namespace Snakexperiment
                 return;
             }
 
+            _snake.Enqueue(newPosition);
+            while (_snake.Count >= _snakeSize)
+                _snake.Dequeue();
+
             if (newPosition == _applePosition)
             {
                 _snakeSize += 5;
@@ -319,10 +305,6 @@ namespace Snakexperiment
                     _applePosition.Y = _rng.Next(FIELD_HEIGHT);
                 } while (_snake.Contains(_applePosition));
             }
-
-            while (_snake.Count >= _snakeSize)
-                _snake.Dequeue();
-            _snake.Enqueue(newPosition);
 
             _lastDirection = _direction;
             _lastPosition = newPosition;
