@@ -10,7 +10,6 @@ namespace Snakexperiment
 {
     public class SnakeGame : Game
     {
-        const double TICK_RATE = 0.125;
 
         const int FIELD_HEIGHT = 20;
         const int FIELD_WIDTH = 20;
@@ -22,6 +21,7 @@ namespace Snakexperiment
         const string QUIT_MESSAGE = "Q to quit";
         const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
 
+        private readonly GraphicsDeviceManager _graphicsDeviceManager;
         private Random _rng;
 
         private Vector2 _gameOverMessagePos;
@@ -32,6 +32,8 @@ namespace Snakexperiment
         private SpriteFont _uiFont;
 
         private Texture2D _appleTexture;
+        private Texture2D _circleTexture;
+        private Texture2D _smallSquareTexture;
         private Texture2D _snakeAliveTexture;
         private Texture2D _snakeDeadTexture;
         private Texture2D _tileTexture;
@@ -39,8 +41,9 @@ namespace Snakexperiment
         private Point _lastDirection;
         private Point _lastPosition;
         private TimeSpan _lastTick;
-        private bool _tickEnabled;
         private int _ticks;
+        private bool _tickEnabled;
+        private double _tickRate = 0.125;
 
         private bool _alive;
         private Point _applePosition;
@@ -53,28 +56,33 @@ namespace Snakexperiment
         private List<AIPlayerScore> _aiPlayers;
         private int _aiPlayerIndex;
         private int _generation;
+        private int _turns;
         private int _turnsSinceApple;
 
         private bool _tabDown;
+        private bool _plusDown;
+        private bool _minusDown;
 
         public SnakeGame()
         {
-            _ = new GraphicsDeviceManager(this)
+            _graphicsDeviceManager = new GraphicsDeviceManager(this)
             {
                 PreferredBackBufferHeight = 720,
                 PreferredBackBufferWidth = 1280,
                 PreferHalfPixelOffset = true,
                 PreferMultiSampling = true,
-                SynchronizeWithVerticalRetrace = false
+                SynchronizeWithVerticalRetrace = true
             };
             _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
             _aiPlayerIndex = 0;
             _generation = 0;
             _fieldTopLeft = new Point(0, 0);
 
-            _tickEnabled = false;
+            _tickEnabled = true;
             _ticks = 0;
             _tabDown = false;
+            _minusDown = false;
+            _plusDown = false;
 
             IsFixedTimeStep = false;
             IsMouseVisible = true;
@@ -93,6 +101,13 @@ namespace Snakexperiment
         public Point Direction => _lastDirection;
         public Point SnakePosition => _snake.Peek();
         public int SnakeSize => _snakeSize;
+
+        public bool IsCollision(Point point)
+            => point.Y < 0
+                || point.Y >= FIELD_HEIGHT
+                || point.X < 0
+                || point.X >= FIELD_WIDTH
+                || _snake.Contains(point);
 
         public bool IsLegalMove(PlayerMovement move)
         {
@@ -118,11 +133,13 @@ namespace Snakexperiment
         {
             _spriteBatch = new SpriteBatch(GraphicsDevice);
 
-            _snakeAliveTexture = Content.Load<Texture2D>("square");
-            _appleTexture = Content.Load<Texture2D>("apple");
-            _snakeDeadTexture = Content.Load<Texture2D>("dead");
-            _tileTexture = Content.Load<Texture2D>("tile");
             _uiFont = Content.Load<SpriteFont>("CascadiaMono");
+            _appleTexture = Content.Load<Texture2D>("apple");
+            _circleTexture = Content.Load<Texture2D>("circle");
+            _smallSquareTexture = Content.Load<Texture2D>("square8x8");
+            _snakeDeadTexture = Content.Load<Texture2D>("dead");
+            _snakeAliveTexture = Content.Load<Texture2D>("square");
+            _tileTexture = Content.Load<Texture2D>("tile");
 
             OnResize(null, EventArgs.Empty);
         }
@@ -134,7 +151,7 @@ namespace Snakexperiment
             HandleKeyPress(Keyboard.GetState());
 
             TimeSpan diff = gameTime.TotalGameTime - _lastTick;
-            if (!_tickEnabled || diff.TotalSeconds >= TICK_RATE)
+            if (!_tickEnabled || diff.TotalSeconds >= _tickRate)
             {
                 UpdateEntities(diff);
 
@@ -159,6 +176,7 @@ namespace Snakexperiment
             DrawField();
             DrawEntities();
             DrawUI(fps, gameTime.TotalGameTime.TotalMilliseconds);
+            DrawDebug();
 
             base.Draw(gameTime);
         }
@@ -167,6 +185,59 @@ namespace Snakexperiment
         {
             _player.Shutdown();
             base.OnExiting(sender, args);
+        }
+
+        private void DrawSmallSquare(Vector2 pos, float shade)
+        {
+            _spriteBatch.Draw(_smallSquareTexture, pos, GetDebugColor(shade));
+        }
+
+        private Color GetDebugColor(float shade)
+        {
+            shade = Math.Clamp(shade, -1.0f, 1.0f);
+            return shade >= 0.0f ? new Color(0.5f, 1.0f, 0.5f) * shade : new Color(-shade, 0.0f, 0.0f);
+        }
+
+        private void DrawDebug()
+        {
+            DrawDebugOutputs();
+
+            var brain = _aiPlayers[_aiPlayerIndex].Player.CloneBrain();
+            var values = brain.GetValues();
+
+            Vector2 topLeft = new Vector2(336, 310);
+            Vector2 offset = new Vector2(16, 0);
+            _spriteBatch.Begin();
+            for (int layerIndex = 0; layerIndex < values.Length; ++layerIndex)
+            {
+                if (values[layerIndex] == null) continue;
+
+                double[] layer = values[layerIndex].Enumerate().ToArray();
+                Vector2 pos = new Vector2(layerIndex * offset.X, offset.Y);
+                for (int y = 0; y < layer.Length; ++y)
+                {
+                    pos.Y = y * 8;;
+                    DrawSmallSquare(topLeft + pos, (float)layer[y]);
+                }
+            }
+
+            _spriteBatch.End();
+        }
+
+        private void DrawDebugOutputs()
+        {
+            Vector2 topLeft = new Vector2(400, 350);
+            var aiDecision = _aiPlayers[_aiPlayerIndex].Player.Decision;
+            float down = aiDecision[0];
+            float left = aiDecision[1];
+            float right = aiDecision[2];
+            float up = aiDecision[3];
+            _spriteBatch.Begin();
+            _spriteBatch.Draw(_circleTexture, topLeft, GetDebugColor(up));
+            _spriteBatch.Draw(_circleTexture, topLeft + new Vector2(-16, 32), GetDebugColor(left));
+            _spriteBatch.Draw(_circleTexture, topLeft + new Vector2(16, 32), GetDebugColor(right));
+            _spriteBatch.Draw(_circleTexture, topLeft + new Vector2(0, 64), GetDebugColor(down));
+            _spriteBatch.End();
         }
 
         private void DrawField()
@@ -252,7 +323,9 @@ namespace Snakexperiment
 
         private void HandleAI()
         {
-            var currentAi = _aiPlayers[_aiPlayerIndex].Score = _snakeSize;
+            int applesEaten = (_snakeSize - 10) / 5;
+            int penalty = applesEaten == 0 ? -1000 : 0;
+            var currentAi = _aiPlayers[_aiPlayerIndex].Score = applesEaten * 1000 + penalty + _turnsSinceApple / 10 + _turns / 20;
             _aiPlayerIndex++;
 
             if (_aiPlayerIndex == POPULATION_SIZE)
@@ -263,11 +336,13 @@ namespace Snakexperiment
                 _aiPlayers.AddRange(BreedAndEvolve(_aiPlayers[0], POPULATION_SIZE / 10 * 4));
                 // Add 20% mutations of second best
                 _aiPlayers.AddRange(BreedAndEvolve(_aiPlayers[1], POPULATION_SIZE / 10 * 2));
-                // Add 10% mutations of third, fourth, fifth
-                _aiPlayers.AddRange(_aiPlayers.Skip(2).Take(3)
-                    .SelectMany(aiPlayer => BreedAndEvolve(aiPlayer, POPULATION_SIZE / 10)));
-                // Add 10% pure random
-                _aiPlayers.AddRange(GenerateAIPlayers(POPULATION_SIZE / 10));
+                // Add 15% mutations of third
+                _aiPlayers.AddRange(BreedAndEvolve(_aiPlayers[2], POPULATION_SIZE / 20 * 3));
+                // Add 10% mutations of fourth and fifth
+                _aiPlayers.AddRange(BreedAndEvolve(_aiPlayers[3], POPULATION_SIZE / 10));
+                _aiPlayers.AddRange(BreedAndEvolve(_aiPlayers[4], POPULATION_SIZE / 10));
+                // Add 5% pure random
+                _aiPlayers.AddRange(GenerateAIPlayers(POPULATION_SIZE - _aiPlayers.Count));
                 _generation++;
                 _aiPlayerIndex = 0;
             }
@@ -288,14 +363,30 @@ namespace Snakexperiment
             }
 
             if (keyboardState.IsKeyDown(Keys.Tab))
-            {
                 _tabDown = true;
-            }
+            if (keyboardState.IsKeyDown(Keys.Subtract))
+                _minusDown = true;
+            if (keyboardState.IsKeyDown(Keys.Add))
+                _plusDown = true;
 
             if (_tabDown && keyboardState.IsKeyUp(Keys.Tab))
             {
-                _tickEnabled = !_tickEnabled;
+                _graphicsDeviceManager.SynchronizeWithVerticalRetrace = !_graphicsDeviceManager.SynchronizeWithVerticalRetrace;
+                _graphicsDeviceManager.ApplyChanges();
+                _tickEnabled = _graphicsDeviceManager.SynchronizeWithVerticalRetrace;
                 _tabDown = false;
+            }
+
+            if (_minusDown && keyboardState.IsKeyUp(Keys.Subtract))
+            {
+                _tickRate *= 2.0;
+                _minusDown = false;
+            }
+
+            if (_plusDown && keyboardState.IsKeyUp(Keys.Add))
+            {
+                _tickRate *= 0.5;
+                _plusDown = false;
             }
         }
 
@@ -326,7 +417,7 @@ namespace Snakexperiment
 
         private void Reset()
         {
-            _rng = new Random(10142019);
+            _rng = new Random(1024);
 
             do
             {
@@ -335,10 +426,11 @@ namespace Snakexperiment
             _alive = true;
             _direction = new Point(1, 0);
             _lastDirection = _direction;
-            _lastPosition = Point.Zero;
+            _lastPosition = new Point(10, 10);
             _snake = new Queue<Point>(FIELD_WIDTH * FIELD_HEIGHT);
             _snake.Enqueue(_lastPosition);
             _snakeSize = 10;
+            _turns = 0;
             _turnsSinceApple = 0;
 
             _player?.Shutdown();
@@ -352,6 +444,7 @@ namespace Snakexperiment
                 return;
 
             ++_turnsSinceApple;
+            ++_turns;
 
             switch (_player.GetMovement())
             {
@@ -362,12 +455,7 @@ namespace Snakexperiment
             }
 
             Point newPosition = _lastPosition + _direction;
-            if (newPosition.Y < 0
-                || newPosition.Y >= FIELD_HEIGHT
-                || newPosition.X < 0
-                || newPosition.X >= FIELD_WIDTH
-                || _turnsSinceApple == FIELD_HEIGHT * FIELD_WIDTH
-                || _snake.Contains(newPosition))
+            if (IsCollision(newPosition) || _turnsSinceApple == 1000)
             {
                 _alive = false;
                 return;
