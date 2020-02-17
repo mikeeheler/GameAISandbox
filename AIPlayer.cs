@@ -3,31 +3,50 @@ using System.Linq;
 
 using MathNet.Numerics.Distributions;
 using MathNet.Numerics.LinearAlgebra;
+using MathNet.Numerics.Random;
 using Microsoft.Xna.Framework;
 
 namespace Snakexperiment
 {
     public class AIPlayer : IPlayerController
     {
-        private SnakeGame _snakeGame;
         private AIPlayerBrain _brain;
-        private PlayerMovement _nextMove;
+        private bool _isInitialized;
+        private SnakeGame _snakeGame;
 
         public AIPlayer()
         {
+            _isInitialized = false;
         }
 
         public bool IsHuman { get; } = false;
+
+        public AIPlayer Clone()
+        {
+            return new AIPlayer
+            {
+                _brain = _brain.Clone(),
+                _isInitialized = true,
+                _snakeGame = _snakeGame,
+            };
+        }
 
         public PlayerMovement GetMovement()
             => GetNextMove();
 
         public void Initialize(SnakeGame snakeGame)
         {
+            if (_isInitialized)
+                return;
+
             _snakeGame = snakeGame;
             _brain = new AIPlayerBrain();
-            _nextMove = PlayerMovement.Right;
-            _nextMove = GetNextMove();
+            _isInitialized = true;
+        }
+
+        public void Mutate(double mutationRate)
+        {
+            _brain.Mutate(mutationRate);
         }
 
         public void Shutdown()
@@ -44,6 +63,8 @@ namespace Snakexperiment
                 direction[1],
                 appleVector[0],
                 appleVector[1],
+                _snakeGame.SnakePosition.X,
+                _snakeGame.SnakePosition.Y,
                 _snakeGame.IsLegalMove(PlayerMovement.Down) ? 1 : -1,
                 _snakeGame.IsLegalMove(PlayerMovement.Left) ? 1 : -1,
                 _snakeGame.IsLegalMove(PlayerMovement.Right) ? 1 : -1,
@@ -67,9 +88,9 @@ namespace Snakexperiment
 
     public class AIPlayerBrain
     {
-        private readonly int _inputSize = 8;
-        private readonly int _layer1Size = 12;
-        private readonly int _layer2Size = 12;
+        private readonly int _inputSize = 10;
+        private readonly int _layer1Size = 20;
+        private readonly int _layer2Size = 20;
         private readonly int _outputSize = 4;
 
         private readonly Matrix<double> _layer1Bias;
@@ -98,6 +119,24 @@ namespace Snakexperiment
             _layer3Weights = Matrix<double>.Build.Random(_layer2Size, _outputSize, new Normal(0.0, 1.0));
         }
 
+        private AIPlayerBrain(AIPlayerBrain other)
+        {
+            _layer1Bias = other._layer1Bias.Clone();
+            _layer2Bias = other._layer2Bias.Clone();
+            _layer3Bias = other._layer3Bias.Clone();
+            _layer1Weights = other._layer1Weights.Clone();
+            _layer2Weights = other._layer2Weights.Clone();
+            _layer3Weights = other._layer3Weights.Clone();
+            _layer1Values = other._layer1Values.Clone();
+            _layer2Values = other._layer2Values.Clone();
+            _layer3Values = other._layer3Values.Clone();
+        }
+
+        public AIPlayerBrain Clone()
+        {
+            return new AIPlayerBrain(this);
+        }
+
         public float[] Compute(params double[] inputs)
         {
             var inputValues = Matrix<double>.Build.DenseOfRowArrays(inputs);
@@ -107,6 +146,24 @@ namespace Snakexperiment
             _layer3Values = Tanh(_layer2Values * _layer3Weights + _layer3Bias);
 
             return _layer3Values.ToColumnMajorArray().Select(i => (float)i).ToArray();
+        }
+
+        public void Mutate(double mutationRate)
+        {
+            Matrix<double>[] weights = { _layer1Weights, _layer2Weights, _layer3Weights };
+            foreach (Matrix<double> weightMatrix in weights)
+            {
+                for (int row = 0; row < weightMatrix.RowCount; ++row)
+                {
+                    for (int col = 0; col < weightMatrix.ColumnCount; ++col)
+                    {
+                        if (MersenneTwister.Default.NextDouble() > mutationRate)
+                            continue;
+
+                        weightMatrix[row,col] += MersenneTwister.Default.NextDouble() * 2.0 - 1.0;
+                    }
+                }
+            }
         }
 
         private Matrix<double> Tanh(Matrix<double> input)

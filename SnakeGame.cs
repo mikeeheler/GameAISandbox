@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
-using MathNet.Numerics.LinearAlgebra;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -15,11 +15,14 @@ namespace Snakexperiment
         const int FIELD_HEIGHT = 20;
         const int FIELD_WIDTH = 20;
 
+        const double MUTATION_RATE = 0.1;
+        const int POPULATION_SIZE = 500;
+
         const string GAME_OVER_MESSAGE = "GAME OVER";
         const string QUIT_MESSAGE = "Q to quit";
         const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
 
-        private readonly Random _rng;
+        private Random _rng;
 
         private Vector2 _gameOverMessagePos;
         private Vector2 _quitMessagePos;
@@ -36,6 +39,7 @@ namespace Snakexperiment
         private Point _lastDirection;
         private Point _lastPosition;
         private TimeSpan _lastTick;
+        private bool _tickEnabled;
         private int _ticks;
 
         private bool _alive;
@@ -46,6 +50,13 @@ namespace Snakexperiment
         private int _snakeSize;
         private IPlayerController _player;
 
+        private List<AIPlayerScore> _aiPlayers;
+        private int _aiPlayerIndex;
+        private int _generation;
+        private int _turnsSinceApple;
+
+        private bool _tabDown;
+
         public SnakeGame()
         {
             _ = new GraphicsDeviceManager(this)
@@ -54,12 +65,16 @@ namespace Snakexperiment
                 PreferredBackBufferWidth = 1280,
                 PreferHalfPixelOffset = true,
                 PreferMultiSampling = true,
-                SynchronizeWithVerticalRetrace = true
+                SynchronizeWithVerticalRetrace = false
             };
-            _rng = new Random();
+            _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
+            _aiPlayerIndex = 0;
+            _generation = 0;
             _fieldTopLeft = new Point(0, 0);
 
+            _tickEnabled = false;
             _ticks = 0;
+            _tabDown = false;
 
             IsFixedTimeStep = false;
             IsMouseVisible = true;
@@ -73,8 +88,11 @@ namespace Snakexperiment
         public int FieldWidth { get; } = FIELD_WIDTH;
 
         public int Score => _snake.Count;
+
         public Point ApplePosition => _applePosition;
         public Point Direction => _lastDirection;
+        public Point SnakePosition => _snake.Peek();
+        public int SnakeSize => _snakeSize;
 
         public bool IsLegalMove(PlayerMovement move)
         {
@@ -116,13 +134,14 @@ namespace Snakexperiment
             HandleKeyPress(Keyboard.GetState());
 
             TimeSpan diff = gameTime.TotalGameTime - _lastTick;
-            if (diff.TotalSeconds >= TICK_RATE)
+            if (!_tickEnabled || diff.TotalSeconds >= TICK_RATE)
             {
                 UpdateEntities(diff);
 
                 if (!_alive && !_player.IsHuman)
                 {
-
+                    HandleAI();
+                    Reset();
                 }
 
                 _lastTick = gameTime.TotalGameTime;
@@ -206,7 +225,52 @@ namespace Snakexperiment
                 _spriteBatch.DrawString(_uiFont, TRY_AGAIN_MESSAGE, _tryAgainMessagePos, Color.LightGoldenrodYellow);
             }
 
+            string aiMessage = $"gen: {_generation:N0}; best: {_aiPlayers[0].Score:N0}; idx: {_aiPlayerIndex:N0}";
+            _spriteBatch.DrawString(_uiFont, aiMessage, Vector2.Zero, Color.LightGray);
+
             _spriteBatch.End();
+        }
+
+        private IEnumerable<AIPlayerScore> BreedAndEvolve(AIPlayerScore input, int count)
+        {
+            return Enumerable.Range(0, count).Select(_ =>
+            {
+                var newPlayer = input.Player.Clone();
+                newPlayer.Mutate(MUTATION_RATE);
+                return new AIPlayerScore { Player = newPlayer, Score = 0 };
+            });
+        }
+
+        private IEnumerable<AIPlayerScore> GenerateAIPlayers(int size)
+        {
+            return Enumerable.Range(0, size).Select(_ =>
+            {
+                var player = new AIPlayer();
+                return new AIPlayerScore { Player = player, Score = 0 };
+            });
+        }
+
+        private void HandleAI()
+        {
+            var currentAi = _aiPlayers[_aiPlayerIndex].Score = _snakeSize;
+            _aiPlayerIndex++;
+
+            if (_aiPlayerIndex == POPULATION_SIZE)
+            {
+                var topTen = _aiPlayers.OrderByDescending(x => x.Score).Take(5);
+                _aiPlayers = new List<AIPlayerScore>(topTen) { Capacity = POPULATION_SIZE };
+                // Add 40% mutations of best score
+                _aiPlayers.AddRange(BreedAndEvolve(_aiPlayers[0], POPULATION_SIZE / 10 * 4));
+                // Add 20% mutations of second best
+                _aiPlayers.AddRange(BreedAndEvolve(_aiPlayers[1], POPULATION_SIZE / 10 * 2));
+                // Add 10% mutations of third, fourth, fifth
+                _aiPlayers.AddRange(_aiPlayers.Skip(2).Take(3)
+                    .SelectMany(aiPlayer => BreedAndEvolve(aiPlayer, POPULATION_SIZE / 10)));
+                // Add 10% pure random
+                _aiPlayers.AddRange(GenerateAIPlayers(POPULATION_SIZE / 10));
+                _generation++;
+                _aiPlayerIndex = 0;
+            }
         }
 
         private void HandleKeyPress(KeyboardState keyboardState)
@@ -221,6 +285,17 @@ namespace Snakexperiment
             {
                 Reset();
                 return;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Tab))
+            {
+                _tabDown = true;
+            }
+
+            if (_tabDown && keyboardState.IsKeyUp(Keys.Tab))
+            {
+                _tickEnabled = !_tickEnabled;
+                _tabDown = false;
             }
         }
 
@@ -251,6 +326,8 @@ namespace Snakexperiment
 
         private void Reset()
         {
+            _rng = new Random(10142019);
+
             do
             {
                 _applePosition = new Point(_rng.Next(FIELD_WIDTH), _rng.Next(FIELD_HEIGHT));
@@ -262,9 +339,10 @@ namespace Snakexperiment
             _snake = new Queue<Point>(FIELD_WIDTH * FIELD_HEIGHT);
             _snake.Enqueue(_lastPosition);
             _snakeSize = 10;
+            _turnsSinceApple = 0;
 
             _player?.Shutdown();
-            _player = new AIPlayer();
+            _player = _aiPlayers[_aiPlayerIndex].Player;
             _player.Initialize(this);
         }
 
@@ -272,6 +350,8 @@ namespace Snakexperiment
         {
             if (!_alive)
                 return;
+
+            ++_turnsSinceApple;
 
             switch (_player.GetMovement())
             {
@@ -286,6 +366,7 @@ namespace Snakexperiment
                 || newPosition.Y >= FIELD_HEIGHT
                 || newPosition.X < 0
                 || newPosition.X >= FIELD_WIDTH
+                || _turnsSinceApple == FIELD_HEIGHT * FIELD_WIDTH
                 || _snake.Contains(newPosition))
             {
                 _alive = false;
@@ -298,6 +379,7 @@ namespace Snakexperiment
 
             if (newPosition == _applePosition)
             {
+                _turnsSinceApple = 0;
                 _snakeSize += 5;
                 do
                 {
@@ -308,6 +390,12 @@ namespace Snakexperiment
 
             _lastDirection = _direction;
             _lastPosition = newPosition;
+        }
+
+        private class AIPlayerScore
+        {
+            public AIPlayer Player { get; set; }
+            public int Score { get; set; }
         }
     }
 }
