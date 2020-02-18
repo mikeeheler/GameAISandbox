@@ -19,6 +19,7 @@ namespace Snakexperiment
 
         const double MUTATION_RATE = 0.6;
         const int POPULATION_SIZE = 500;
+        const int MAX_AI_TURNS = FIELD_HEIGHT * FIELD_WIDTH;
 
         const string GAME_OVER_MESSAGE = "GAME OVER";
         const string QUIT_MESSAGE = "Q to quit";
@@ -150,10 +151,13 @@ namespace Snakexperiment
         public double[] GetSnakeVision()
         {
             Point forward = _lastDirection;
-            Point left = new Point(-forward.Y, forward.X);
-            Point right = new Point(forward.Y, -forward.X);
-            Point behind = new Point(-forward.X, -forward.Y);;
-            return Look(forward)
+            Point left = new Point(forward.Y, -forward.X);
+            Point right = new Point(-forward.Y, forward.X);
+            Point behind = new Point(-forward.X, -forward.Y);
+            // MAX_AI_TURNS is like a shot clock, and danger computes how much stress the snake feels to get a shot off
+            double danger = (double)_turnsSinceApple / MAX_AI_TURNS;
+            return new double[] { danger*danger } // danger squared
+                .Concat(Look(forward))
                 .Concat(Look(forward + left))
                 .Concat(Look(left))
                 .Concat(Look(behind + left))
@@ -404,7 +408,7 @@ namespace Snakexperiment
             int applesEaten = (_snakeSize - 10) / 5;
             var currentAi = _aiPlayers[_aiPlayerIndex];
             double distanceToApple = 1.0 / (_applePosition - _lastPosition).ToVector2().Length() * 100.0;
-            currentAi.Score = _snakeSize < 20 ? _turns / 10 : 1000 + applesEaten + (int)distanceToApple;
+            currentAi.Score = applesEaten;
             _aiPlayerIndex++;
 
             if (_aiPlayerIndex == POPULATION_SIZE)
@@ -506,7 +510,7 @@ namespace Snakexperiment
             _direction = new Point(1, 0);
             _lastDirection = _direction;
             _lastPosition = new Point(10, 10);
-            _snake = new Queue<Point>(FIELD_WIDTH * FIELD_HEIGHT);
+            _snake = new Queue<Point>(FIELD_HEIGHT * FIELD_WIDTH);
             _snake.Enqueue(_lastPosition);
             _snakeSize = 10;
             _turns = 0;
@@ -534,7 +538,7 @@ namespace Snakexperiment
             }
 
             Point newPosition = _lastPosition + _direction;
-            if (IsCollision(newPosition) || _turnsSinceApple == 1000)
+            if (IsCollision(newPosition) || _turnsSinceApple == MAX_AI_TURNS)
             {
                 _alive = false;
                 return;
