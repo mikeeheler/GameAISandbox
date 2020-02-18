@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 
+using MathNet.Numerics.LinearAlgebra;
+
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -14,7 +16,7 @@ namespace Snakexperiment
         const int FIELD_HEIGHT = 20;
         const int FIELD_WIDTH = 20;
 
-        const double MUTATION_RATE = 0.1;
+        const double MUTATION_RATE = 0.6;
         const int POPULATION_SIZE = 500;
 
         const string GAME_OVER_MESSAGE = "GAME OVER";
@@ -101,6 +103,17 @@ namespace Snakexperiment
         public Point Direction => _lastDirection;
         public Point SnakePosition => _snake.Peek();
         public int SnakeSize => _snakeSize;
+
+        public double[] GetBoardValues()
+        {
+            var result = Matrix<Double>.Build.Dense(FIELD_HEIGHT, FIELD_WIDTH, 0.0);
+            result[_applePosition.Y, _applePosition.X] = 1.0;
+            foreach (Point snakePiece in _snake)
+            {
+                result[snakePiece.Y, snakePiece.X] = -1.0;
+            }
+            return result.AsColumnMajorArray();
+        }
 
         public bool IsCollision(Point point)
             => point.Y < 0
@@ -302,7 +315,16 @@ namespace Snakexperiment
             _spriteBatch.End();
         }
 
-        private IEnumerable<AIPlayerScore> BreedAndEvolve(AIPlayerScore input, int count)
+        private IEnumerable<AIPlayerScore> Breed(AIPlayerScore firstParent, AIPlayerScore secondParent, int count)
+        {
+            return Enumerable.Range(0, count).Select(_ =>
+            {
+                var baby = firstParent.Player.BreedWith(secondParent.Player);
+                return new AIPlayerScore { Player = baby, Score = 0};
+            });
+        }
+
+        private IEnumerable<AIPlayerScore> Evolve(AIPlayerScore input, int count)
         {
             return Enumerable.Range(0, count).Select(_ =>
             {
@@ -325,22 +347,25 @@ namespace Snakexperiment
         {
             int applesEaten = (_snakeSize - 10) / 5;
             int penalty = applesEaten == 0 ? -1000 : 0;
-            var currentAi = _aiPlayers[_aiPlayerIndex].Score = applesEaten * 1000 + penalty + _turnsSinceApple / 10 + _turns / 20;
+            var currentAi = _aiPlayers[_aiPlayerIndex].Score = applesEaten * 1000 + penalty + _turns / 2;
             _aiPlayerIndex++;
 
             if (_aiPlayerIndex == POPULATION_SIZE)
             {
-                var topTen = _aiPlayers.OrderByDescending(x => x.Score).Take(5);
-                _aiPlayers = new List<AIPlayerScore>(topTen) { Capacity = POPULATION_SIZE };
-                // Add 40% mutations of best score
-                _aiPlayers.AddRange(BreedAndEvolve(_aiPlayers[0], POPULATION_SIZE / 10 * 4));
+                var topTen = _aiPlayers.OrderByDescending(x => x.Score).Take(5).ToList();
+                _aiPlayers = new List<AIPlayerScore>() { Capacity = POPULATION_SIZE };
+                _aiPlayers.AddRange(topTen);
+                // Add 20% offspring of the top 2
+                _aiPlayers.AddRange(Breed(_aiPlayers[0], _aiPlayers[1], POPULATION_SIZE / 5));
+                // Add 20% mutations of best score
+                _aiPlayers.AddRange(Evolve(_aiPlayers[0], POPULATION_SIZE / 5));
                 // Add 20% mutations of second best
-                _aiPlayers.AddRange(BreedAndEvolve(_aiPlayers[1], POPULATION_SIZE / 10 * 2));
+                _aiPlayers.AddRange(Evolve(_aiPlayers[1], POPULATION_SIZE / 5));
                 // Add 15% mutations of third
-                _aiPlayers.AddRange(BreedAndEvolve(_aiPlayers[2], POPULATION_SIZE / 20 * 3));
+                _aiPlayers.AddRange(Evolve(_aiPlayers[2], POPULATION_SIZE / 20 * 3));
                 // Add 10% mutations of fourth and fifth
-                _aiPlayers.AddRange(BreedAndEvolve(_aiPlayers[3], POPULATION_SIZE / 10));
-                _aiPlayers.AddRange(BreedAndEvolve(_aiPlayers[4], POPULATION_SIZE / 10));
+                _aiPlayers.AddRange(Evolve(_aiPlayers[3], POPULATION_SIZE / 10));
+                _aiPlayers.AddRange(Evolve(_aiPlayers[4], POPULATION_SIZE / 10));
                 // Add 5% pure random
                 _aiPlayers.AddRange(GenerateAIPlayers(POPULATION_SIZE - _aiPlayers.Count));
                 _generation++;
