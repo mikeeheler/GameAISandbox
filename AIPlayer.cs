@@ -1,7 +1,8 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 
-using MathNet.Numerics.Distributions;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.Random;
 using Microsoft.Xna.Framework;
@@ -10,23 +11,27 @@ namespace Snakexperiment
 {
     public class AIPlayer : IPlayerController
     {
-        private readonly Point _downDirection = new Point(0, 1);
-        private readonly Point _leftDirection = new Point(-1, 0);
-        private readonly Point _rightDirection = new Point(1, 0);
-        private readonly Point _upDirection = new Point(0, -1);
+        private static long _globalId = 0;
+
         private AIPlayerBrain _brain;
         private bool _isInitialized;
+        private PlayerMovement _lastMovement;
         private SnakeGame _snakeGame;
-        private Vector<float> _lastDecision;
+        private long _speciesId;
 
         public AIPlayer()
         {
+            Id = Interlocked.Increment(ref _globalId);
             _isInitialized = false;
-            _lastDecision = Vector<float>.Build.Dense(4, 0.0f);
+            Decision = Vector<float>.Build.Dense(4, 0.0f);
+            _lastMovement = PlayerMovement.Right;
+            SpeciesId = Id;
         }
 
+        public long Id { get; }
         public bool IsHuman { get; } = false;
-        public Vector<float> Decision => _lastDecision;
+        public Vector<float> Decision { get; private set; }
+        public long SpeciesId { get; private set; }
 
         public AIPlayer Clone()
         {
@@ -34,15 +39,16 @@ namespace Snakexperiment
             {
                 _brain = _brain.Clone(),
                 _isInitialized = true,
-                _snakeGame = _snakeGame
+                _snakeGame = _snakeGame,
+                SpeciesId = SpeciesId
             };
         }
 
-        public AIPlayer BreedWith(AIPlayer consentingAdult)
+        public AIPlayer BreedWith(AIPlayer consentingAdult, AIBreedingMode breedingMode)
         {
             return new AIPlayer
             {
-                _brain = _brain.MergeWith(consentingAdult._brain),
+                _brain = _brain.MergeWith(consentingAdult._brain, breedingMode),
                 _isInitialized = true,
                 _snakeGame = _snakeGame
             };
@@ -75,50 +81,80 @@ namespace Snakexperiment
 
         private PlayerMovement GetNextMove()
         {
-            var direction = PointToVector(_snakeGame.Direction);
-            var applePosition = PointToVector(_snakeGame.ApplePosition);
-            var appleVector = (applePosition - direction).Normalize(2.0);
-            var snakePos = _snakeGame.SnakePosition;
-            /*
-            var result = _brain.Compute(
-                direction[0],
-                direction[1],
-                appleVector[0],
-                appleVector[1],
-                _snakeGame.IsLegalMove(PlayerMovement.Down)
-                    && !_snakeGame.IsCollision(snakePos + _downDirection) ? 1 : -1,
-                _snakeGame.IsLegalMove(PlayerMovement.Left)
-                    && !_snakeGame.IsCollision(snakePos + _leftDirection) ? 1 : -1,
-                _snakeGame.IsLegalMove(PlayerMovement.Right)
-                    && !_snakeGame.IsCollision(snakePos + _rightDirection) ? 1 : -1,
-                _snakeGame.IsLegalMove(PlayerMovement.Up)
-                    && !_snakeGame.IsCollision(snakePos + _upDirection) ? 1 : -1);
-            */
-            var result = _brain.Compute(_snakeGame.GetBoardValues());
-            var values = Vector<float>.Build.Dense(result);
-            int index =  values.MaximumIndex();
-            _lastDecision = values;
+            var result = _brain.Compute(_snakeGame.GetSnakeVision());
 
-            return index switch
+            // Normalize values to make the sum ~=1.0 (p-norm=1.0 does this -- this is not a unit vector)
+            var values = Vector<float>.Build.Dense(result).Normalize(1.0);
+            // Bind each result to the movement it would select them sort them ascending
+            var moves = new[] {
+                (values[0], _lastMovement),
+                (values[1], TurnLeft(_lastMovement)),
+                (values[2], TurnRight(_lastMovement))
+            }.OrderBy(item => item.Item1).ToArray();
+            double totalSum = moves.Sum(x => x.Item1); // should be ==1.0 but in practice it's ~=1.0
+            PlayerMovement move;
+            // Sometimes the brain can't decide what to do and all values are zero (or close to it)
+            // in this case just pick one.
+            if (totalSum < 0.01)
             {
-                0 => PlayerMovement.Down,
-                1 => PlayerMovement.Left,
-                2 => PlayerMovement.Right,
-                3 => PlayerMovement.Up,
-                _ => throw new ArgumentOutOfRangeException()
+                int index = MersenneTwister.Default.Next(moves.Length);
+                move = moves[index].Item2;
+            }
+            else
+            {
+                // Select a move based on probability, i.e. if 0=0.1, 1=0.2, and 3=0.7 after normalization then
+                // 0-0.1 select move 0, 0.1-0.3 select move 1, and 0.3+ select move 2
+                double roll = MersenneTwister.Default.NextDouble() * totalSum;
+                double sum = 0.0;
+                int index = 0;
+                while (sum <= roll)
+                    sum += moves[index++].Item1;
+                move = moves[index-1].Item2;
+            }
+            Decision = values;
+            _lastMovement = move;
+            return move;
+        }
+
+        private PlayerMovement TurnLeft(PlayerMovement move)
+        {
+            return move switch
+            {
+                PlayerMovement.Down => PlayerMovement.Right,
+                PlayerMovement.Left => PlayerMovement.Down,
+                PlayerMovement.Right => PlayerMovement.Up,
+                PlayerMovement.Up => PlayerMovement.Left,
+                _ => throw new ArgumentOutOfRangeException(nameof(move)),
             };
         }
 
-        private Vector<double> PointToVector(Point point)
-            => Vector<double>.Build.Dense(new double[] { point.X, point.Y });
+        private PlayerMovement TurnRight(PlayerMovement move)
+        {
+            return move switch
+            {
+                PlayerMovement.Down => PlayerMovement.Left,
+                PlayerMovement.Left => PlayerMovement.Up,
+                PlayerMovement.Right => PlayerMovement.Down,
+                PlayerMovement.Up => PlayerMovement.Right,
+                _ => throw new ArgumentOutOfRangeException(nameof(move)),
+            };
+        }
+    }
+
+    public enum AIBreedingMode
+    {
+        Blend,
+        Mix
     }
 
     public class AIPlayerBrain
     {
-        private readonly int _inputSize = 400;
-        private readonly int _layer1Size = 200;
-        private readonly int _layer2Size = 100;
-        private readonly int _outputSize = 4;
+        private readonly RandomSource _random = MersenneTwister.Default;
+
+        private readonly int _inputSize = 24;
+        private readonly int _layer1Size = 18;
+        private readonly int _layer2Size = 18;
+        private readonly int _outputSize = 3;
 
         private readonly Matrix<double> _layer1Bias;
         private readonly Matrix<double> _layer2Bias;
@@ -140,27 +176,27 @@ namespace Snakexperiment
             _layer1Bias = Matrix<double>.Build.Dense(
                 1,
                 _layer1Size,
-                (row, col) => MersenneTwister.Default.NextDouble() * 2.0 - 1.0);
+                (row, col) => _random.NextDouble() * 2.0 - 1.0);
             _layer2Bias = Matrix<double>.Build.Dense(
                 1,
                 _layer2Size,
-                (row, col) => MersenneTwister.Default.NextDouble() * 2.0 - 1.0);
+                (row, col) => _random.NextDouble() * 2.0 - 1.0);
             _layer3Bias = Matrix<double>.Build.Dense(
                 1,
                 _outputSize,
-                (row, col) => MersenneTwister.Default.NextDouble() * 2.0 - 1.0);
+                (row, col) => _random.NextDouble() * 2.0 - 1.0);
             _layer1Weights = Matrix<double>.Build.Dense(
                 _inputSize,
                 _layer1Size,
-                (row, col) => MersenneTwister.Default.NextDouble() * 2.0 - 1.0);
+                (row, col) => _random.NextDouble() * 2.0 - 1.0);
             _layer2Weights = Matrix<double>.Build.Dense(
                 _layer1Size,
                 _layer2Size,
-                (row, col) => MersenneTwister.Default.NextDouble() * 2.0 - 1.0);
+                (row, col) => _random.NextDouble() * 2.0 - 1.0);
             _layer3Weights = Matrix<double>.Build.Dense(
                 _layer2Size,
                 _outputSize,
-                (row, col) => MersenneTwister.Default.NextDouble() * 2.0 - 1.0);
+                (row, col) => _random.NextDouble() * 2.0 - 1.0);
         }
 
         private AIPlayerBrain(AIPlayerBrain other)
@@ -177,18 +213,30 @@ namespace Snakexperiment
             _layer3Values = other._layer3Values?.Clone();
         }
 
-        private AIPlayerBrain(AIPlayerBrain left, AIPlayerBrain right)
+        private AIPlayerBrain(AIPlayerBrain left, AIPlayerBrain right, AIBreedingMode breedingMode)
         {
-            _layer1Bias = left._layer1Bias * 0.5 + right._layer1Bias * 0.5;
-            _layer2Bias = left._layer2Bias * 0.5 + right._layer2Bias * 0.5;
-            _layer3Bias = left._layer3Bias * 0.5 + right._layer3Bias * 0.5;
-            _layer1Weights = left._layer1Weights * 0.5 + right._layer1Weights * 0.5;
-            _layer2Weights = left._layer2Weights * 0.5 + right._layer2Weights * 0.5;
-            _layer3Weights = left._layer3Weights * 0.5 + right._layer3Weights * 0.5;
-            _inputValues = left._inputValues?.Clone();
-            _layer1Values = left._layer1Values?.Clone();
-            _layer2Values = left._layer2Values?.Clone();
-            _layer3Values = left._layer3Values?.Clone();
+            switch (breedingMode)
+            {
+                case AIBreedingMode.Blend:
+                    _layer1Bias = left._layer1Bias * 0.5 + right._layer1Bias * 0.5;
+                    _layer2Bias = left._layer2Bias * 0.5 + right._layer2Bias * 0.5;
+                    _layer3Bias = left._layer3Bias * 0.5 + right._layer3Bias * 0.5;
+                    _layer1Weights = left._layer1Weights * 0.5 + right._layer1Weights * 0.5;
+                    _layer2Weights = left._layer2Weights * 0.5 + right._layer2Weights * 0.5;
+                    _layer3Weights = left._layer3Weights * 0.5 + right._layer3Weights * 0.5;
+                    break;
+
+                case AIBreedingMode.Mix:
+                    _layer1Bias = MixMatrices(left._layer1Bias, right._layer1Bias);
+                    _layer2Bias = MixMatrices(left._layer2Bias, right._layer2Bias);
+                    _layer3Bias = MixMatrices(left._layer3Bias, right._layer3Bias);
+                    _layer1Weights = MixMatrices(left._layer1Weights, right._layer1Weights);
+                    _layer2Weights = MixMatrices(left._layer2Weights, right._layer2Weights);
+                    _layer3Weights = MixMatrices(left._layer3Weights, right._layer3Weights);
+                    break;
+
+                default: throw new ArgumentOutOfRangeException(nameof(breedingMode));
+            }
         }
 
         public AIPlayerBrain Clone()
@@ -198,25 +246,25 @@ namespace Snakexperiment
         {
             _inputValues = Matrix<double>.Build.DenseOfRowArrays(inputs);
 
-            _layer1Values = ReLU(_inputValues * _layer1Weights + _layer1Bias);
-            _layer2Values = ReLU(_layer1Values * _layer2Weights + _layer2Bias);
-            _layer3Values = ReLU(_layer2Values * _layer3Weights + _layer3Bias);
+            _layer1Values = LeakyReLU(_inputValues * _layer1Weights + _layer1Bias);
+            _layer2Values = LeakyReLU(_layer1Values * _layer2Weights + _layer2Bias);
+            _layer3Values = LeakyReLU(_layer2Values * _layer3Weights + _layer3Bias);
 
             return _layer3Values.ToColumnMajorArray().Select(i => (float)i).ToArray();
         }
 
         public Matrix<double>[] GetValues()
-            => new[] { /*_layer1Values?.Clone(),*/ _layer3Values?.Clone() };
+            => new[] { _inputValues?.Clone(), _layer1Values?.Clone(), _layer2Values?.Clone(), _layer3Values?.Clone() };
 
         public Matrix<double>[] GetWeights()
-            => new[] { /*_layer1Weights.Clone(),*/ _layer3Weights.Clone() };
+            => new[] { _layer1Weights.Clone(), _layer2Weights.Clone(), _layer3Weights.Clone() };
 
-        public AIPlayerBrain MergeWith(AIPlayerBrain other)
-            => new AIPlayerBrain(this, other);
+        public AIPlayerBrain MergeWith(AIPlayerBrain other, AIBreedingMode breedingMode)
+            => new AIPlayerBrain(this, other, breedingMode);
 
         public void Mutate(double mutationRate)
         {
-            double randomRate = MersenneTwister.Default.NextDouble() * mutationRate;
+            double randomRate = _random.NextDouble() * mutationRate;
             Matrix<double>[] mutateMatrices =
             {
                 _layer1Bias, _layer2Bias, _layer3Bias,
@@ -228,28 +276,40 @@ namespace Snakexperiment
                 {
                     for (int col = 0; col < mutateMatrix.ColumnCount; ++col)
                     {
-                        if (MersenneTwister.Default.NextDouble() > randomRate)
+                        if (_random.NextDouble() > randomRate)
                             continue;
 
-                        int method = MersenneTwister.Default.Next(4);
+                        int method = _random.Next(4);
                         switch (method)
                         {
-                            case 0: // tweak by up to ±0.1
-                                mutateMatrix[row, col] += MersenneTwister.Default.NextDouble() * 0.2 - 0.1;
+                            case 0: // tweak by up to ±0.2
+                                mutateMatrix[row, col] += _random.NextDouble() * 0.4 - 0.2;
                                 break;
                             case 1: // replace with a new weight range -1.0 to 1.0
-                                mutateMatrix[row, col] = MersenneTwister.Default.NextDouble() * 2.0 - 1.0;
+                                mutateMatrix[row, col] = _random.NextDouble() * 2.0 - 1.0;
                                 break;
-                            case 2: // multiply by up to 20%
-                                mutateMatrix[row, col] *= MersenneTwister.Default.NextDouble() * 0.2;
+                            case 2: // weaken or strengthen by up to 20%
+                                mutateMatrix[row, col] *= 1.0 + _random.NextDouble() * 0.4 - 0.2;
                                 break;
                             case 3: // negate
                                 mutateMatrix[row, col] *= -1;
                                 break;
                         }
+
+                        mutateMatrix[row, col] = Math.Clamp(mutateMatrix[row, col], -1.0, 1.0);
                     }
                 }
             }
+        }
+
+        private Matrix<double> MixMatrices(Matrix<double> left, Matrix<double> right)
+        {
+            Debug.Assert(left.ColumnCount == right.ColumnCount);
+            Debug.Assert(left.RowCount == right.RowCount);
+            return Matrix<double>.Build.Dense(
+                left.RowCount,
+                left.ColumnCount,
+                (row, col) => _random.NextDouble() < 0.5 ? left[row,col] : right[row,col]);
         }
 
         private Matrix<double> Tanh(Matrix<double> input)
@@ -267,10 +327,15 @@ namespace Snakexperiment
 
         private Matrix<double> ReLU(Matrix<double> input)
         {
+            return input.PointwiseMaximum(0.0);
+        }
+
+        private Matrix<double> LeakyReLU(Matrix<double> input)
+        {
             return Matrix<double>.Build.Dense(
                 input.RowCount,
                 input.ColumnCount,
-                (row, col) => Math.Max(0.0, input[row,col]));
+                (row, col) => input[row,col] < 0.0 ? 0.01 * input[row,col] : input[row,col]);
         }
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using MathNet.Numerics.LinearAlgebra;
+using MathNet.Numerics.Random;
 
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -24,7 +25,7 @@ namespace Snakexperiment
         const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
 
         private readonly GraphicsDeviceManager _graphicsDeviceManager;
-        private Random _rng;
+        private readonly RandomSource _rng;
 
         private Vector2 _gameOverMessagePos;
         private Vector2 _quitMessagePos;
@@ -52,7 +53,7 @@ namespace Snakexperiment
         private Point _direction;
         private Point _fieldTopLeft;
         private Queue<Point> _snake;
-        private int _snakeSize;
+        private int _snakeSize; // target snake size -- _snake grows by 1 each turn to reach this goal
         private IPlayerController _player;
 
         private List<AIPlayerScore> _aiPlayers;
@@ -75,6 +76,7 @@ namespace Snakexperiment
                 PreferMultiSampling = true,
                 SynchronizeWithVerticalRetrace = true
             };
+            _rng = MersenneTwister.Default;
             _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
             _aiPlayerIndex = 0;
             _generation = 0;
@@ -101,12 +103,12 @@ namespace Snakexperiment
 
         public Point ApplePosition => _applePosition;
         public Point Direction => _lastDirection;
-        public Point SnakePosition => _snake.Peek();
+        public Point SnakePosition => _lastPosition;
         public int SnakeSize => _snakeSize;
 
         public double[] GetBoardValues()
         {
-            var result = Matrix<Double>.Build.Dense(FIELD_HEIGHT, FIELD_WIDTH, 0.0);
+            var result = Matrix<double>.Build.Dense(FIELD_HEIGHT, FIELD_WIDTH, 0.0);
             result[_applePosition.Y, _applePosition.X] = 1.0;
             foreach (Point snakePiece in _snake)
             {
@@ -115,12 +117,61 @@ namespace Snakexperiment
             return result.AsColumnMajorArray();
         }
 
+        private double[] Look(Point direction)
+        {
+            // 0 = distance to apple, if in this direction
+            // 1 = distance to tail, if in this direction
+            // 2 = distance to wall in this direction
+            double[] result = { 0.0, 0.0, 0.0 };
+            Point lookPos = _lastPosition;
+            int distance = 0;
+            bool snakeFound = false;
+            do
+            {
+                lookPos += direction;
+                ++distance;
+
+                if (IsWallCollision(lookPos))
+                {
+                    result[2] = 1.0 / distance;
+                    return result;
+                }
+
+                if (lookPos == _applePosition)
+                    result[0] = 1.0 / distance;
+                if (!snakeFound && _snake.Contains(lookPos))
+                {
+                    result[1] = 1.0 / distance;
+                    snakeFound = true;
+                }
+            } while(true);
+        }
+
+        public double[] GetSnakeVision()
+        {
+            Point forward = _lastDirection;
+            Point left = new Point(-forward.Y, forward.X);
+            Point right = new Point(forward.Y, -forward.X);
+            Point behind = new Point(-forward.X, -forward.Y);;
+            return Look(forward)
+                .Concat(Look(forward + left))
+                .Concat(Look(left))
+                .Concat(Look(behind + left))
+                .Concat(Look(behind))
+                .Concat(Look(behind + right))
+                .Concat(Look(right))
+                .Concat(Look(forward + right))
+                .ToArray();
+        }
+
         public bool IsCollision(Point point)
+            => IsWallCollision(point) || _snake.Contains(point);
+
+        public bool IsWallCollision(Point point)
             => point.Y < 0
                 || point.Y >= FIELD_HEIGHT
                 || point.X < 0
-                || point.X >= FIELD_WIDTH
-                || _snake.Contains(point);
+                || point.X >= FIELD_WIDTH;
 
         public bool IsLegalMove(PlayerMovement move)
         {
@@ -241,15 +292,15 @@ namespace Snakexperiment
         {
             Vector2 topLeft = new Vector2(400, 350);
             var aiDecision = _aiPlayers[_aiPlayerIndex].Player.Decision;
-            float down = aiDecision[0];
+            float up = aiDecision[0];
             float left = aiDecision[1];
             float right = aiDecision[2];
-            float up = aiDecision[3];
+            // float down = aiDecision[0];
             _spriteBatch.Begin();
             _spriteBatch.Draw(_circleTexture, topLeft, GetDebugColor(up));
             _spriteBatch.Draw(_circleTexture, topLeft + new Vector2(-16, 32), GetDebugColor(left));
             _spriteBatch.Draw(_circleTexture, topLeft + new Vector2(16, 32), GetDebugColor(right));
-            _spriteBatch.Draw(_circleTexture, topLeft + new Vector2(0, 64), GetDebugColor(down));
+            //_spriteBatch.Draw(_circleTexture, topLeft + new Vector2(0, 64), GetDebugColor(down));
             _spriteBatch.End();
         }
 
@@ -309,17 +360,22 @@ namespace Snakexperiment
                 _spriteBatch.DrawString(_uiFont, TRY_AGAIN_MESSAGE, _tryAgainMessagePos, Color.LightGoldenrodYellow);
             }
 
-            string aiMessage = $"gen: {_generation:N0}; best: {_aiPlayers[0].Score:N0}; idx: {_aiPlayerIndex:N0}";
+            string aiMessage = $"gen: {_generation:N0}; best: {_aiPlayers[0].Score:N0}; idx: {_aiPlayerIndex:N0}; "
+                + $"id: {_aiPlayers[_aiPlayerIndex].Player.Id}; species: {_aiPlayers[_aiPlayerIndex].Player.SpeciesId}";
             _spriteBatch.DrawString(_uiFont, aiMessage, Vector2.Zero, Color.LightGray);
 
             _spriteBatch.End();
         }
 
-        private IEnumerable<AIPlayerScore> Breed(AIPlayerScore firstParent, AIPlayerScore secondParent, int count)
+        private IEnumerable<AIPlayerScore> Breed(
+            AIPlayerScore firstParent,
+            AIPlayerScore secondParent,
+            int count,
+            AIBreedingMode breedingMode)
         {
             return Enumerable.Range(0, count).Select(_ =>
             {
-                var baby = firstParent.Player.BreedWith(secondParent.Player);
+                var baby = firstParent.Player.BreedWith(secondParent.Player, breedingMode);
                 return new AIPlayerScore { Player = baby, Score = 0};
             });
         }
@@ -346,8 +402,9 @@ namespace Snakexperiment
         private void HandleAI()
         {
             int applesEaten = (_snakeSize - 10) / 5;
-            int penalty = applesEaten == 0 ? -1000 : 0;
-            var currentAi = _aiPlayers[_aiPlayerIndex].Score = applesEaten * 1000 + penalty + _turns / 2;
+            var currentAi = _aiPlayers[_aiPlayerIndex];
+            double distanceToApple = 1.0 / (_applePosition - _lastPosition).ToVector2().Length() * 100.0;
+            currentAi.Score = _snakeSize < 20 ? _turns / 10 : 1000 + applesEaten + (int)distanceToApple;
             _aiPlayerIndex++;
 
             if (_aiPlayerIndex == POPULATION_SIZE)
@@ -355,18 +412,17 @@ namespace Snakexperiment
                 var topTen = _aiPlayers.OrderByDescending(x => x.Score).Take(5).ToList();
                 _aiPlayers = new List<AIPlayerScore>() { Capacity = POPULATION_SIZE };
                 _aiPlayers.AddRange(topTen);
-                // Add 20% offspring of the top 2
-                _aiPlayers.AddRange(Breed(_aiPlayers[0], _aiPlayers[1], POPULATION_SIZE / 5));
-                // Add 20% mutations of best score
+                // Top player breeds with the other top 10 for first 50% of population
+                for (int i = 1; i < 10; ++i)
+                {
+                    // child = (parentA + parentB) / 2 -- selected genes blended
+                    _aiPlayers.AddRange(Breed(_aiPlayers[0], _aiPlayers[i], 15, AIBreedingMode.Blend));
+                    // child = (50% of parentA + 50% of parent B) -- selected genes unaltered
+                    _aiPlayers.AddRange(Breed(_aiPlayers[0], _aiPlayers[i], 15, AIBreedingMode.Mix));
+                }
+                // Add 30% mutations of best score
                 _aiPlayers.AddRange(Evolve(_aiPlayers[0], POPULATION_SIZE / 5));
-                // Add 20% mutations of second best
-                _aiPlayers.AddRange(Evolve(_aiPlayers[1], POPULATION_SIZE / 5));
-                // Add 15% mutations of third
-                _aiPlayers.AddRange(Evolve(_aiPlayers[2], POPULATION_SIZE / 20 * 3));
-                // Add 10% mutations of fourth and fifth
-                _aiPlayers.AddRange(Evolve(_aiPlayers[3], POPULATION_SIZE / 10));
-                _aiPlayers.AddRange(Evolve(_aiPlayers[4], POPULATION_SIZE / 10));
-                // Add 5% pure random
+                // Remainder pure random
                 _aiPlayers.AddRange(GenerateAIPlayers(POPULATION_SIZE - _aiPlayers.Count));
                 _generation++;
                 _aiPlayerIndex = 0;
@@ -442,8 +498,6 @@ namespace Snakexperiment
 
         private void Reset()
         {
-            _rng = new Random(1024);
-
             do
             {
                 _applePosition = new Point(_rng.Next(FIELD_WIDTH), _rng.Next(FIELD_HEIGHT));
