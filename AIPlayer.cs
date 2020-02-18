@@ -11,7 +11,7 @@ namespace Snakexperiment
     {
         private static long _globalId = 0;
 
-        private AIPlayerBrain _brain;
+        private AIBrain _brain;
         private bool _isInitialized;
         private PlayerMovement _lastMovement;
         private SnakeGame _snakeGame;
@@ -25,9 +25,10 @@ namespace Snakexperiment
             SpeciesId = Id;
         }
 
+        public AIBrainType BrainType => _brain.BrainType;
+        public Vector<float> Decision { get; private set; }
         public long Id { get; }
         public bool IsHuman { get; } = false;
-        public Vector<float> Decision { get; private set; }
         public long SpeciesId { get; private set; }
 
         public AIPlayer Clone()
@@ -47,11 +48,12 @@ namespace Snakexperiment
             {
                 _brain = _brain.MergeWith(consentingAdult._brain, breedingMode),
                 _isInitialized = true,
-                _snakeGame = _snakeGame
+                _snakeGame = _snakeGame,
+                SpeciesId = SpeciesId
             };
         }
 
-        public AIPlayerBrain CloneBrain()
+        public AIBrain CloneBrain()
             => _brain.Clone();
 
         public PlayerMovement GetMovement()
@@ -63,7 +65,7 @@ namespace Snakexperiment
                 return;
 
             _snakeGame = snakeGame;
-            _brain = new AIPlayerBrain();
+            _brain = new AIBrain();
             _isInitialized = true;
         }
 

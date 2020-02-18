@@ -8,11 +8,11 @@ using Microsoft.Xna.Framework;
 
 namespace Snakexperiment
 {
-    public class AIPlayerBrain
+    public class AIBrain
     {
         private readonly RandomSource _random = MersenneTwister.Default;
 
-        private readonly int _inputSize = 25;
+        private readonly int _inputSize = 22;
         private readonly int _hiddenSize = 18;
         private readonly int _outputSize = 3;
 
@@ -25,10 +25,12 @@ namespace Snakexperiment
         private Matrix<double> _hiddenValues;
         private Matrix<double> _outputValues;
 
-        public AIPlayerBrain()
+        public AIBrain()
         {
             // mathnet indices: row,col
             // mathnet mem: col maj
+
+            BrainType = AIBrainType.OneOfGodsOwnPrototypes;
 
             // TODO find a uniform distribution for Matrix<double>.Random that gives results -1 to 1
             //      -- it'll probably be faster
@@ -50,8 +52,10 @@ namespace Snakexperiment
                 (row, col) => _random.NextDouble() * 2.0 - 1.0);
         }
 
-        private AIPlayerBrain(AIPlayerBrain other)
+        private AIBrain(AIBrain other)
         {
+            BrainType = AIBrainType.MutatedClone;
+
             _inputBias = other._inputBias.Clone();
             _hiddenBias = other._hiddenBias.Clone();
             _inputWeights = other._inputWeights.Clone();
@@ -61,12 +65,13 @@ namespace Snakexperiment
             _outputValues = other._outputValues?.Clone();
         }
 
-        private AIPlayerBrain(AIPlayerBrain left, AIPlayerBrain right, AIBreedingMode breedingMode)
+        private AIBrain(AIBrain left, AIBrain right, AIBreedingMode breedingMode)
         {
             switch (breedingMode)
             {
                 // Half of both parents genes are present in every one of the child's genes
-                case AIBreedingMode.Blend:
+                case AIBreedingMode.Coalesce:
+                    BrainType = AIBrainType.DescendentCoalesced;
                     _inputBias = left._inputBias * 0.5 + right._inputBias * 0.5;
                     _hiddenBias = left._hiddenBias * 0.5 + right._hiddenBias * 0.5;
                     _inputWeights = left._inputWeights * 0.5 + right._inputWeights * 0.5;
@@ -75,6 +80,7 @@ namespace Snakexperiment
 
                 // Half of parent 1's genes and half of parent 2's genes
                 case AIBreedingMode.Mix:
+                    BrainType = AIBrainType.DescendentMixed;
                     _inputBias = MixMatrices(left._inputBias, right._inputBias);
                     _hiddenBias = MixMatrices(left._hiddenBias, right._hiddenBias);
                     _inputWeights = MixMatrices(left._inputWeights, right._inputWeights);
@@ -85,8 +91,10 @@ namespace Snakexperiment
             }
         }
 
-        public AIPlayerBrain Clone()
-            => new AIPlayerBrain(this);
+        public AIBrainType BrainType { get; }
+
+        public AIBrain Clone()
+            => new AIBrain(this);
 
         public float[] Compute(params double[] inputs)
         {
@@ -104,8 +112,8 @@ namespace Snakexperiment
         public Matrix<double>[] GetWeights()
             => new[] { _inputWeights.Clone(), _hiddenWeights.Clone() };
 
-        public AIPlayerBrain MergeWith(AIPlayerBrain other, AIBreedingMode breedingMode)
-            => new AIPlayerBrain(this, other, breedingMode);
+        public AIBrain MergeWith(AIBrain other, AIBreedingMode breedingMode)
+            => new AIBrain(this, other, breedingMode);
 
         public void Mutate(double mutationRate)
         {

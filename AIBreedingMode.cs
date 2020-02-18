@@ -2,7 +2,7 @@ namespace Snakexperiment
 {
     public enum AIBreedingMode
     {
-        Blend,
+        Coalesce,
         Mix
     }
 }

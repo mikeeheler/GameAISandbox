@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.Random;
@@ -13,7 +14,6 @@ namespace Snakexperiment
 {
     public class SnakeGame : Game
     {
-
         const int FIELD_HEIGHT = 20;
         const int FIELD_WIDTH = 20;
 
@@ -21,12 +21,19 @@ namespace Snakexperiment
         const int POPULATION_SIZE = 500;
         const int MAX_AI_TURNS = FIELD_HEIGHT * FIELD_WIDTH;
 
+        const double RAD90 = Math.PI * 0.5;
+        const double RAD180 = Math.PI;
+
         const string GAME_OVER_MESSAGE = "GAME OVER";
         const string QUIT_MESSAGE = "Q to quit";
         const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
 
         private readonly GraphicsDeviceManager _graphicsDeviceManager;
         private readonly RandomSource _rng;
+
+        private readonly Color _backgroundColor;
+        private readonly Color _activeNeuronColor;
+        private readonly Color _inactiveNeuronColor;
 
         private Vector2 _gameOverMessagePos;
         private Vector2 _quitMessagePos;
@@ -36,6 +43,7 @@ namespace Snakexperiment
         private SpriteFont _uiFont;
 
         private Texture2D _appleTexture;
+        private Texture2D _arrowTexture;
         private Texture2D _circleTexture;
         private Texture2D _smallSquareTexture;
         private Texture2D _snakeAliveTexture;
@@ -54,12 +62,12 @@ namespace Snakexperiment
         private Point _direction;
         private Point _fieldTopLeft;
         private Queue<Point> _snake;
-        private int _snakeSize; // target snake size -- _snake grows by 1 each turn to reach this goal
         private IPlayerController _player;
 
         private List<AIPlayerScore> _aiPlayers;
         private int _aiPlayerIndex;
         private int _generation;
+        private int _lastGenBestScore;
         private int _turns;
         private int _turnsSinceApple;
 
@@ -81,7 +89,12 @@ namespace Snakexperiment
             _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
             _aiPlayerIndex = 0;
             _generation = 0;
+            _lastGenBestScore = 0;
             _fieldTopLeft = new Point(0, 0);
+
+            _backgroundColor = new Color(0.1f, 0.1f, 0.1f);
+            _activeNeuronColor = new Color(0.5f, 1.0f, 0.5f);
+            _inactiveNeuronColor = new Color(1.0f, 0.0f, 0.0f);
 
             _tickEnabled = true;
             _ticks = 0;
@@ -105,7 +118,7 @@ namespace Snakexperiment
         public Point ApplePosition => _applePosition;
         public Point Direction => _lastDirection;
         public Point SnakePosition => _lastPosition;
-        public int SnakeSize => _snakeSize;
+        public int SnakeSize { get; private set; }
 
         public double[] GetBoardValues()
         {
@@ -161,7 +174,7 @@ namespace Snakexperiment
                 .Concat(Look(forward + left))
                 .Concat(Look(left))
                 .Concat(Look(behind + left))
-                .Concat(Look(behind))
+                //.Concat(Look(behind))
                 .Concat(Look(behind + right))
                 .Concat(Look(right))
                 .Concat(Look(forward + right))
@@ -203,6 +216,7 @@ namespace Snakexperiment
 
             _uiFont = Content.Load<SpriteFont>("CascadiaMono");
             _appleTexture = Content.Load<Texture2D>("apple");
+            _arrowTexture = Content.Load<Texture2D>("arrow");
             _circleTexture = Content.Load<Texture2D>("circle");
             _smallSquareTexture = Content.Load<Texture2D>("square8x8");
             _snakeDeadTexture = Content.Load<Texture2D>("dead");
@@ -237,7 +251,7 @@ namespace Snakexperiment
 
         protected override void Draw(GameTime gameTime)
         {
-            GraphicsDevice.Clear(Color.Black);
+            GraphicsDevice.Clear(_backgroundColor);
 
             float fps = (float)(1000.0 / gameTime.ElapsedGameTime.TotalMilliseconds);
 
@@ -263,7 +277,11 @@ namespace Snakexperiment
         private Color GetDebugColor(float shade)
         {
             shade = Math.Clamp(shade, -1.0f, 1.0f);
-            return shade >= 0.0f ? new Color(0.5f, 1.0f, 0.5f) * shade : new Color(-shade, 0.0f, 0.0f);
+
+            Color shadeColor = new Color(
+                (shade >= 0 ? _activeNeuronColor : _inactiveNeuronColor) * Math.Abs(shade),
+                1.0f);
+            return shadeColor;
         }
 
         private void DrawDebug()
@@ -292,19 +310,33 @@ namespace Snakexperiment
             _spriteBatch.End();
         }
 
+        private void DrawDebugArrow(Vector2 position, Vector2 offset, Color color, float rotation)
+        {
+            _spriteBatch.Draw(
+                _arrowTexture,
+                position + offset,
+                null,
+                color,
+                rotation,
+                offset,
+                1.0f,
+                SpriteEffects.None,
+                0.0f);
+        }
+
         private void DrawDebugOutputs()
         {
             Vector2 topLeft = new Vector2(400, 350);
+            Vector2 offset = new Vector2(16, 16);
             var aiDecision = _aiPlayers[_aiPlayerIndex].Player.Decision;
             float up = aiDecision[0];
             float left = aiDecision[1];
             float right = aiDecision[2];
             // float down = aiDecision[0];
             _spriteBatch.Begin();
-            _spriteBatch.Draw(_circleTexture, topLeft, GetDebugColor(up));
-            _spriteBatch.Draw(_circleTexture, topLeft + new Vector2(-16, 32), GetDebugColor(left));
-            _spriteBatch.Draw(_circleTexture, topLeft + new Vector2(16, 32), GetDebugColor(right));
-            //_spriteBatch.Draw(_circleTexture, topLeft + new Vector2(0, 64), GetDebugColor(down));
+            DrawDebugArrow(topLeft, offset, GetDebugColor(up), (float)RAD90);
+            DrawDebugArrow(topLeft + new Vector2(-16, 32), offset, GetDebugColor(left), 0.0f);
+            DrawDebugArrow(topLeft + new Vector2(16, 32), offset, GetDebugColor(right), (float)RAD180);
             _spriteBatch.End();
         }
 
@@ -353,7 +385,7 @@ namespace Snakexperiment
 
             _spriteBatch.DrawString(_uiFont, QUIT_MESSAGE, _quitMessagePos, Color.LightGray);
 
-            string scoreMessage = $"size: {_snakeSize:N0}; fps: {fps:N0}; tavg: {gameTime/_ticks:N2}";
+            string scoreMessage = $"size: {SnakeSize:N0}; fps: {fps:N0}; tavg: {gameTime/_ticks:N2}";
             Point scoreMessageSize = _uiFont.MeasureString(scoreMessage).ToPoint();
             Point scoreMessagePosition = Window.ClientBounds.Size - scoreMessageSize;
             _spriteBatch.DrawString(_uiFont, scoreMessage, scoreMessagePosition.ToVector2(), Color.LightGray);
@@ -364,9 +396,25 @@ namespace Snakexperiment
                 _spriteBatch.DrawString(_uiFont, TRY_AGAIN_MESSAGE, _tryAgainMessagePos, Color.LightGoldenrodYellow);
             }
 
-            string aiMessage = $"gen: {_generation:N0}; best: {_aiPlayers[0].Score:N0}; idx: {_aiPlayerIndex:N0}; "
-                + $"id: {_aiPlayers[_aiPlayerIndex].Player.Id}; species: {_aiPlayers[_aiPlayerIndex].Player.SpeciesId}";
-            _spriteBatch.DrawString(_uiFont, aiMessage, Vector2.Zero, Color.LightGray);
+            static string GetBrainTypeName(AIBrainType brainType)
+                => brainType switch
+                {
+                    AIBrainType.DescendentCoalesced => "coalesced",
+                    AIBrainType.DescendentMixed => "mixed",
+                    AIBrainType.MutatedClone => "mutant",
+                    AIBrainType.OneOfGodsOwnPrototypes => "prototype",
+                    _ => throw new ArgumentOutOfRangeException(nameof(brainType))
+                };
+
+            var stringBuilder = new StringBuilder()
+                .Append($"gen: {_generation:N0}; ")
+                .Append($"best: {_lastGenBestScore:N0}; ")
+                .Append($"idx: {_aiPlayerIndex:N0}; ")
+                .Append($"id: {_aiPlayers[_aiPlayerIndex].Player.Id:N0}; ")
+                .AppendLine($"species: {_aiPlayers[_aiPlayerIndex].Player.SpeciesId:N0}")
+                .Append($"brain: {GetBrainTypeName(_aiPlayers[_aiPlayerIndex].Player.BrainType)}");
+
+            _spriteBatch.DrawString(_uiFont, stringBuilder, Vector2.Zero, Color.LightGray);
 
             _spriteBatch.End();
         }
@@ -405,7 +453,7 @@ namespace Snakexperiment
 
         private void HandleAI()
         {
-            int applesEaten = (_snakeSize - 10) / 5;
+            int applesEaten = (SnakeSize - 10) / 5;
             var currentAi = _aiPlayers[_aiPlayerIndex];
             double distanceToApple = 1.0 / (_applePosition - _lastPosition).ToVector2().Length() * 100.0;
             currentAi.Score = applesEaten;
@@ -420,7 +468,7 @@ namespace Snakexperiment
                 for (int i = 1; i < 10; ++i)
                 {
                     // child = (parentA + parentB) / 2 -- selected genes blended
-                    _aiPlayers.AddRange(Breed(_aiPlayers[0], _aiPlayers[i], 15, AIBreedingMode.Blend));
+                    _aiPlayers.AddRange(Breed(_aiPlayers[0], _aiPlayers[i], 15, AIBreedingMode.Coalesce));
                     // child = (50% of parentA + 50% of parent B) -- selected genes unaltered
                     _aiPlayers.AddRange(Breed(_aiPlayers[0], _aiPlayers[i], 15, AIBreedingMode.Mix));
                 }
@@ -429,6 +477,7 @@ namespace Snakexperiment
                 // Remainder pure random
                 _aiPlayers.AddRange(GenerateAIPlayers(POPULATION_SIZE - _aiPlayers.Count));
                 _generation++;
+                _lastGenBestScore = _aiPlayers[0].Score;
                 _aiPlayerIndex = 0;
             }
         }
@@ -509,10 +558,10 @@ namespace Snakexperiment
             _alive = true;
             _direction = new Point(1, 0);
             _lastDirection = _direction;
-            _lastPosition = new Point(10, 10);
+            _lastPosition = new Point(9, 9);
             _snake = new Queue<Point>(FIELD_HEIGHT * FIELD_WIDTH);
             _snake.Enqueue(_lastPosition);
-            _snakeSize = 10;
+            SnakeSize = 10;
             _turns = 0;
             _turnsSinceApple = 0;
 
@@ -545,13 +594,13 @@ namespace Snakexperiment
             }
 
             _snake.Enqueue(newPosition);
-            while (_snake.Count >= _snakeSize)
+            while (_snake.Count >= SnakeSize)
                 _snake.Dequeue();
 
             if (newPosition == _applePosition)
             {
                 _turnsSinceApple = 0;
-                _snakeSize += 5;
+                SnakeSize += 5;
                 do
                 {
                     _applePosition.X = _rng.Next(FIELD_WIDTH);
