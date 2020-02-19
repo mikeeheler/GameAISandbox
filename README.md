@@ -24,5 +24,5 @@ All original code and images were created by [Mike Eheler](https://github.com/mi
 
 ## Errata
 
-All commits in this repository will be signed by [my public key](https://gist.github.com/mikeeheler/303269340dc45d6e9153228a7b74e8b8)
+All commits in this repository will be signed with [my PGP key](https://gist.github.com/mikeeheler/303269340dc45d6e9153228a7b74e8b8)
 with fingerprint `296F CA51 371A A5A7 82E0 0428 6589 955E 87DA 6430`.
