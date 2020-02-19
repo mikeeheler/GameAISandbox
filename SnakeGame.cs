@@ -131,36 +131,6 @@ namespace Snakexperiment
             return result.AsColumnMajorArray();
         }
 
-        private double[] Look(Point direction)
-        {
-            // 0 = distance to apple, if in this direction
-            // 1 = distance to tail, if in this direction
-            // 2 = distance to wall in this direction
-            double[] result = { 0.0, 0.0, 0.0 };
-            Point lookPos = _lastPosition;
-            int distance = 0;
-            bool snakeFound = false;
-            do
-            {
-                lookPos += direction;
-                ++distance;
-
-                if (IsWallCollision(lookPos))
-                {
-                    result[2] = 1.0 / distance;
-                    return result;
-                }
-
-                if (lookPos == _applePosition)
-                    result[0] = 1.0 / distance;
-                if (!snakeFound && _snake.Contains(lookPos))
-                {
-                    result[1] = 1.0 / distance;
-                    snakeFound = true;
-                }
-            } while(true);
-        }
-
         public double[] GetSnakeVision()
         {
             Point forward = _lastDirection;
@@ -168,13 +138,15 @@ namespace Snakexperiment
             Point right = new Point(-forward.Y, forward.X);
             Point behind = new Point(-forward.X, -forward.Y);
             // MAX_AI_TURNS is like a shot clock, and danger computes how much stress the snake feels to get a shot off
+            // The intention is that the snake will evolve to give more weight to the apple as this increases
+            // In reality, the snake will do what it wants.
             double danger = (double)_turnsSinceApple / MAX_AI_TURNS;
             return new double[] { danger*danger } // danger squared
                 .Concat(Look(forward))
                 .Concat(Look(forward + left))
                 .Concat(Look(left))
                 .Concat(Look(behind + left))
-                //.Concat(Look(behind))
+                //.Concat(Look(behind)) // Should the snake be able to see behind its head?
                 .Concat(Look(behind + right))
                 .Concat(Look(right))
                 .Concat(Look(forward + right))
@@ -200,6 +172,20 @@ namespace Snakexperiment
                 PlayerMovement.Up => _lastDirection.Y != 1,
                 _ => throw new ArgumentOutOfRangeException(nameof(move), move, ""),
             };
+        }
+
+        protected override void Draw(GameTime gameTime)
+        {
+            GraphicsDevice.Clear(_backgroundColor);
+
+            float fps = (float)(1000.0 / gameTime.ElapsedGameTime.TotalMilliseconds);
+
+            DrawField();
+            DrawEntities();
+            DrawUI(fps, gameTime.TotalGameTime.TotalMilliseconds);
+            DrawDebug();
+
+            base.Draw(gameTime);
         }
 
         protected override void Initialize()
@@ -249,39 +235,28 @@ namespace Snakexperiment
             base.Update(gameTime);
         }
 
-        protected override void Draw(GameTime gameTime)
-        {
-            GraphicsDevice.Clear(_backgroundColor);
-
-            float fps = (float)(1000.0 / gameTime.ElapsedGameTime.TotalMilliseconds);
-
-            DrawField();
-            DrawEntities();
-            DrawUI(fps, gameTime.TotalGameTime.TotalMilliseconds);
-            DrawDebug();
-
-            base.Draw(gameTime);
-        }
-
         protected override void OnExiting(object sender, EventArgs args)
         {
             _player.Shutdown();
             base.OnExiting(sender, args);
         }
 
+        private IEnumerable<AIPlayerScore> Breed(
+            AIPlayerScore firstParent,
+            AIPlayerScore secondParent,
+            int count,
+            AIBreedingMode breedingMode)
+        {
+            return Enumerable.Range(0, count).Select(_ =>
+            {
+                var baby = firstParent.Player.BreedWith(secondParent.Player, breedingMode);
+                return new AIPlayerScore { Player = baby, Score = 0 };
+            });
+        }
+
         private void DrawSmallSquare(Vector2 pos, float shade)
         {
             _spriteBatch.Draw(_smallSquareTexture, pos, GetDebugColor(shade));
-        }
-
-        private Color GetDebugColor(float shade)
-        {
-            shade = Math.Clamp(shade, -1.0f, 1.0f);
-
-            Color shadeColor = new Color(
-                (shade >= 0 ? _activeNeuronColor : _inactiveNeuronColor) * Math.Abs(shade),
-                1.0f);
-            return shadeColor;
         }
 
         private void DrawDebug()
@@ -419,19 +394,6 @@ namespace Snakexperiment
             _spriteBatch.End();
         }
 
-        private IEnumerable<AIPlayerScore> Breed(
-            AIPlayerScore firstParent,
-            AIPlayerScore secondParent,
-            int count,
-            AIBreedingMode breedingMode)
-        {
-            return Enumerable.Range(0, count).Select(_ =>
-            {
-                var baby = firstParent.Player.BreedWith(secondParent.Player, breedingMode);
-                return new AIPlayerScore { Player = baby, Score = 0};
-            });
-        }
-
         private IEnumerable<AIPlayerScore> Evolve(AIPlayerScore input, int count)
         {
             return Enumerable.Range(0, count).Select(_ =>
@@ -449,6 +411,16 @@ namespace Snakexperiment
                 var player = new AIPlayer();
                 return new AIPlayerScore { Player = player, Score = 0 };
             });
+        }
+
+        private Color GetDebugColor(float shade)
+        {
+            shade = Math.Clamp(shade, -1.0f, 1.0f);
+
+            Color shadeColor = new Color(
+                (shade >= 0 ? _activeNeuronColor : _inactiveNeuronColor) * Math.Abs(shade),
+                1.0f);
+            return shadeColor;
         }
 
         private void HandleAI()
@@ -522,6 +494,36 @@ namespace Snakexperiment
                 _tickRate *= 0.5;
                 _plusDown = false;
             }
+        }
+
+        private double[] Look(Point direction)
+        {
+            // 0 = distance to apple, if in this direction
+            // 1 = distance to tail, if in this direction
+            // 2 = distance to wall in this direction
+            double[] result = { 0.0, 0.0, 0.0 };
+            Point lookPos = _lastPosition;
+            int distance = 0;
+            bool snakeFound = false;
+            do
+            {
+                lookPos += direction;
+                ++distance;
+
+                if (IsWallCollision(lookPos))
+                {
+                    result[2] = 1.0 / distance;
+                    return result;
+                }
+
+                if (lookPos == _applePosition)
+                    result[0] = 1.0 / distance;
+                if (!snakeFound && _snake.Contains(lookPos))
+                {
+                    result[1] = 1.0 / distance;
+                    snakeFound = true;
+                }
+            } while (true);
         }
 
         private void OnResize(object sender, EventArgs e)
