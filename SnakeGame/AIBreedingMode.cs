@@ -1,4 +1,4 @@
-namespace Snakexperiment
+namespace SnakeGame
 {
     public enum AIBreedingMode
     {

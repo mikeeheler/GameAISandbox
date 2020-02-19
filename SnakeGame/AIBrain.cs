@@ -6,7 +6,7 @@ using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.Random;
 using Microsoft.Xna.Framework;
 
-namespace Snakexperiment
+namespace SnakeGame
 {
     public class AIBrain
     {
