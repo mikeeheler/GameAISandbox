@@ -122,7 +122,7 @@ namespace SnakeGame
             _inputValues = Matrix<double>.Build.DenseOfRowArrays(inputs);
 
             _hiddenValues = LeakyReLU(_inputValues * _inputWeights + _inputBias);
-            _outputValues = ReLU(_hiddenValues * _hiddenWeights + _hiddenBias);
+            _outputValues = LeakyReLU(_hiddenValues * _hiddenWeights + _hiddenBias);
 
             return _outputValues.ToColumnMajorArray().Select(i => (float)i).ToArray();
         }
