@@ -10,17 +10,17 @@
 
   <PropertyGroup>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>Resources/appicon.ico</ApplicationIcon>
+    <ApplicationIcon>Resources/icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Resources/appicon.ico" />
-    <None Remove="Resources/appicon.png" />
+    <!--None Remove="Resources/icon.ico" /-->
+    <None Remove="Icon.bmp" />
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Resources/appicon.ico" />
-    <EmbeddedResource Include="Resources/appicon.png" />
+    <!--EmbeddedResource Include="Resources/icon.ico" /-->
+    <EmbeddedResource Include="Icon.bmp" />
   </ItemGroup>
 
   <ItemGroup>

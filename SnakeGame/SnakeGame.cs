@@ -108,6 +108,7 @@ namespace SnakeGame
             Content.RootDirectory = "Content";
             Window.AllowUserResizing = true;
             Window.ClientSizeChanged += OnResize;
+            Window.Title = "Snake Game AI Sandbox";
         }
 
         public int FieldHeight { get; } = FIELD_HEIGHT;
@@ -201,13 +202,13 @@ namespace SnakeGame
             _spriteBatch = new SpriteBatch(GraphicsDevice);
 
             _uiFont = Content.Load<SpriteFont>("CascadiaMono");
-            _appleTexture = Content.Load<Texture2D>("apple");
-            _arrowTexture = Content.Load<Texture2D>("arrow");
-            _circleTexture = Content.Load<Texture2D>("circle");
-            _smallSquareTexture = Content.Load<Texture2D>("square8x8");
-            _snakeDeadTexture = Content.Load<Texture2D>("dead");
-            _snakeAliveTexture = Content.Load<Texture2D>("square");
-            _tileTexture = Content.Load<Texture2D>("tile");
+            _appleTexture = Content.Load<Texture2D>("Textures/apple");
+            _arrowTexture = Content.Load<Texture2D>("Textures/arrow");
+            _circleTexture = Content.Load<Texture2D>("Textures/circle");
+            _smallSquareTexture = Content.Load<Texture2D>("Textures/square8x8");
+            _snakeDeadTexture = Content.Load<Texture2D>("Textures/dead");
+            _snakeAliveTexture = Content.Load<Texture2D>("Textures/square");
+            _tileTexture = Content.Load<Texture2D>("Textures/tile");
 
             OnResize(null, EventArgs.Empty);
         }
