@@ -65,7 +65,7 @@ namespace SnakeGame
                 return;
 
             _snakeGame = snakeGame;
-            _brain = new AIBrain();
+            _brain = new AIBrain(22, 18, 3);
             _isInitialized = true;
         }
 
@@ -81,20 +81,29 @@ namespace SnakeGame
         private PlayerMovement GetNextMove()
         {
             var result = _brain.Compute(_snakeGame.GetSnakeVision());
+            Decision = Vector<float>.Build.Dense(result);
 
-            // Normalize values to make the sum ~=1.0 (p-norm=1.0 does this -- this is not a unit vector)
-            var values = Vector<float>.Build.Dense(result).Normalize(1.0);
-            // Bind each result to the movement it would select them sort them ascending
+            // Normalize values to make the sum ~=1.0
+            var probabilities = Decision.Clone();
+            // All negative probabilities; raise them until none are negative (the least desired will have 0 probability)
+            if (probabilities.Maximum() < 0.0f)
+                probabilities -= probabilities.Minimum();
+            else // otherwise throw away all negative options
+                probabilities = probabilities.PointwiseMaximum(0.0f);
+
+            // Bind each result to the movement it would select. This distinction is arbitrary
+            // TODO dig deep to see if there's some implicit bias in this mechanism
             var moves = new[] {
-                (values[0], _lastMovement),
-                (values[1], TurnLeft(_lastMovement)),
-                (values[2], TurnRight(_lastMovement))
-            }.OrderBy(item => item.Item1).ToArray();
-            double totalSum = moves.Sum(x => x.Item1); // should be ==1.0 but in practice it's ~=1.0
+                (probabilities[0], _lastMovement),
+                (probabilities[1], TurnLeft(_lastMovement)),
+                (probabilities[2], TurnRight(_lastMovement))
+            };
+            double totalSum = probabilities.Sum();
+
             PlayerMovement move;
-            // Sometimes the brain can't decide what to do and all values are zero (or close to it)
+            // Sometimes brain can't decide what to do and all values are zero (or close to it)
             // in this case just pick one.
-            if (totalSum < 0.01)
+            if (totalSum < 0.001)
             {
                 int index = MersenneTwister.Default.Next(moves.Length);
                 move = moves[index].Item2;
@@ -106,11 +115,11 @@ namespace SnakeGame
                 double roll = MersenneTwister.Default.NextDouble() * totalSum;
                 double sum = 0.0;
                 int index = 0;
-                while (sum <= roll)
+                while (sum < roll && index <= moves.Length)
                     sum += moves[index++].Item1;
-                move = moves[index-1].Item2;
+                move = moves[--index].Item2;
             }
-            Decision = values;
+
             _lastMovement = move;
             return move;
         }

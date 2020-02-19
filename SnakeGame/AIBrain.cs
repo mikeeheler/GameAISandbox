@@ -12,9 +12,9 @@ namespace SnakeGame
     {
         private readonly RandomSource _random = MersenneTwister.Default;
 
-        private readonly int _inputSize = 22;
-        private readonly int _hiddenSize = 18;
-        private readonly int _outputSize = 3;
+        private readonly int _inputSize;
+        private readonly int _hiddenSize;
+        private readonly int _outputSize;
 
         private readonly Matrix<double> _inputBias;
         private readonly Matrix<double> _hiddenBias;
@@ -25,8 +25,15 @@ namespace SnakeGame
         private Matrix<double> _hiddenValues;
         private Matrix<double> _outputValues;
 
-        public AIBrain()
+        public AIBrain(int inputSize, int hiddenSize, int outputSize)
         {
+            Debug.Assert(inputSize > 0);
+            Debug.Assert(hiddenSize > 0);
+            Debug.Assert(outputSize > 0);
+
+            _inputSize = inputSize;
+            _hiddenSize = hiddenSize;
+            _outputSize = outputSize;
             // mathnet indices: row,col
             // mathnet mem: col maj
 
@@ -56,6 +63,10 @@ namespace SnakeGame
         {
             BrainType = AIBrainType.MutatedClone;
 
+            _inputSize = other._inputSize;
+            _hiddenSize = other._hiddenSize;
+            _outputSize = other._outputSize;
+
             _inputBias = other._inputBias.Clone();
             _hiddenBias = other._hiddenBias.Clone();
             _inputWeights = other._inputWeights.Clone();
@@ -67,6 +78,14 @@ namespace SnakeGame
 
         private AIBrain(AIBrain left, AIBrain right, AIBreedingMode breedingMode)
         {
+            Debug.Assert(left._inputSize == right._inputSize);
+            Debug.Assert(left._hiddenSize == right._hiddenSize);
+            Debug.Assert(left._outputSize == right._outputSize);
+
+            _inputSize = left._inputSize;
+            _hiddenSize = left._hiddenSize;
+            _outputSize = left._outputSize;
+
             switch (breedingMode)
             {
                 // Half of both parents genes are present in every one of the child's genes
@@ -98,6 +117,8 @@ namespace SnakeGame
 
         public float[] Compute(params double[] inputs)
         {
+            Debug.Assert(inputs.Length == _inputSize);
+
             _inputValues = Matrix<double>.Build.DenseOfRowArrays(inputs);
 
             _hiddenValues = LeakyReLU(_inputValues * _inputWeights + _inputBias);
@@ -123,8 +144,10 @@ namespace SnakeGame
                 _inputBias, _hiddenBias,
                 _inputWeights, _hiddenWeights
             };
-            foreach (Matrix<double> mutateMatrix in mutateMatrices)
+            for (int matrixIndex = 0; matrixIndex < mutateMatrices.Length; ++matrixIndex)
             {
+                Matrix<double> mutateMatrix = mutateMatrices[matrixIndex];
+
                 for (int row = 0; row < mutateMatrix.RowCount; ++row)
                 {
                     for (int col = 0; col < mutateMatrix.ColumnCount; ++col)
