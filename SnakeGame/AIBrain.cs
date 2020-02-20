@@ -152,7 +152,7 @@ namespace SnakeGame
                 {
                     for (int col = 0; col < mutateMatrix.ColumnCount; ++col)
                     {
-                        if (_random.NextDouble() < randomRate)
+                        if (_random.NextDouble() >= randomRate)
                             continue;
 
                         int method = _random.Next(4);

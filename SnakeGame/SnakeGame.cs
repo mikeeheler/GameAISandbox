@@ -17,9 +17,10 @@ namespace SnakeGame
         const int FIELD_HEIGHT = 20;
         const int FIELD_WIDTH = 20;
 
-        const double MUTATION_RATE = 0.6;
-        const int POPULATION_SIZE = 500;
+        const int GAMES_PER_GENERATION = 100;
         const int MAX_AI_TURNS = FIELD_HEIGHT * FIELD_WIDTH;
+        const double MUTATION_RATE = 0.25;
+        const int POPULATION_SIZE = 500;
 
         const double RAD90 = Math.PI * 0.5;
         const double RAD180 = Math.PI;
@@ -66,6 +67,7 @@ namespace SnakeGame
 
         private List<AIPlayerScore> _aiPlayers;
         private int _aiPlayerIndex;
+        private int _gamesPlayed;
         private int _generation;
         private int _lastGenBestScore;
         private int _turns;
@@ -88,6 +90,7 @@ namespace SnakeGame
             _rng = MersenneTwister.Default;
             _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
             _aiPlayerIndex = 0;
+            _gamesPlayed = 0;
             _generation = 0;
             _lastGenBestScore = 0;
             _fieldTopLeft = new Point(0, 0);
@@ -384,10 +387,12 @@ namespace SnakeGame
 
             var stringBuilder = new StringBuilder()
                 .Append($"gen: {_generation:N0}; ")
-                .Append($"best: {_lastGenBestScore:N0}; ")
                 .Append($"idx: {_aiPlayerIndex:N0}; ")
                 .Append($"id: {_aiPlayers[_aiPlayerIndex].Player.Id:N0}; ")
                 .AppendLine($"species: {_aiPlayers[_aiPlayerIndex].Player.SpeciesId:N0}")
+                .Append($"games: {_gamesPlayed:N0}; ")
+                .Append($"score: {_aiPlayers[_aiPlayerIndex].Score:N0}; ")
+                .AppendLine($"best: {_lastGenBestScore:N0}")
                 .Append($"brain: {GetBrainTypeName(_aiPlayers[_aiPlayerIndex].Player.BrainType)}");
 
             _spriteBatch.DrawString(_uiFont, stringBuilder, Vector2.Zero, Color.LightGray);
@@ -424,34 +429,69 @@ namespace SnakeGame
             return shadeColor;
         }
 
+        private Point GetFreePoint()
+        {
+            Point result = new Point();;
+            do { result.X = _rng.Next(FIELD_WIDTH); result.Y = _rng.Next(FIELD_HEIGHT); }
+            while (result == _applePosition && _snake.Contains(result));
+            return result;
+        }
+
         private void HandleAI()
         {
             int applesEaten = (SnakeSize - 10) / 5;
-            var currentAi = _aiPlayers[_aiPlayerIndex];
+            var activePlayer = _aiPlayers[_aiPlayerIndex];
             double distanceToApple = 1.0 / (_applePosition - _lastPosition).ToVector2().Length() * 100.0;
-            currentAi.Score = applesEaten;
+            activePlayer.Score += applesEaten;
+            _gamesPlayed++;
+            if (_gamesPlayed < GAMES_PER_GENERATION)
+                return;
+
             _aiPlayerIndex++;
+            _gamesPlayed = 0;
+            _lastGenBestScore = Math.Max(activePlayer.Score, _lastGenBestScore);
 
             if (_aiPlayerIndex == POPULATION_SIZE)
             {
-                var topTen = _aiPlayers.OrderByDescending(x => x.Score).Take(5).ToList();
-                _aiPlayers = new List<AIPlayerScore>() { Capacity = POPULATION_SIZE };
-                _aiPlayers.AddRange(topTen);
-                // Top player breeds with the other top 10 for first 50% of population
-                for (int i = 1; i < 10; ++i)
-                {
-                    // child = (parentA + parentB) / 2 -- selected genes blended
-                    _aiPlayers.AddRange(Breed(_aiPlayers[0], _aiPlayers[i], 15, AIBreedingMode.Coalesce));
-                    // child = (50% of parentA + 50% of parent B) -- selected genes unaltered
-                    _aiPlayers.AddRange(Breed(_aiPlayers[0], _aiPlayers[i], 15, AIBreedingMode.Mix));
-                }
-                // Add 30% mutations of best score
-                _aiPlayers.AddRange(Evolve(_aiPlayers[0], POPULATION_SIZE / 5));
-                // Remainder pure random
-                _aiPlayers.AddRange(GenerateAIPlayers(POPULATION_SIZE - _aiPlayers.Count));
-                _generation++;
-                _lastGenBestScore = _aiPlayers[0].Score;
                 _aiPlayerIndex = 0;
+                _generation++;
+
+                var sorted = _aiPlayers.OrderByDescending(x => x.Score).ToList();
+                _aiPlayers = new List<AIPlayerScore>() { Capacity = POPULATION_SIZE };
+                var parents = new List<AIPlayerScore>(sorted.Count);
+                long oddsSum = 0;
+                for (int i = 0; i < sorted.Count; ++i)
+                {
+                    // This should prune about half, with increasing likelihood of dying towards the bottom
+                    // of the pile
+                    double deathChance = (double)i / sorted.Count;
+                    if (_rng.NextDouble() < deathChance)
+                        continue;
+
+                    _aiPlayers.Add(sorted[i]);
+                    parents.Add(sorted[i]);
+                    oddsSum += sorted[i].Score;
+                }
+
+                // Now select parents to breed from. The top entities have the best chance of breeding.
+                while (_aiPlayers.Count < POPULATION_SIZE)
+                {
+                    int index = 0;
+                    double sum = 0.0;
+                    double roll = _rng.NextDouble() * oddsSum;
+                    while (sum < roll && index <= parents.Count)
+                        sum += parents[index++].Score;
+                    var child = new AIPlayerScore
+                    {
+                        Player = parents[--index].Player.Clone(),
+                        Score = 0
+                    };
+                    child.Player.Mutate(MUTATION_RATE);
+                    _aiPlayers.Add(child);
+                }
+
+                foreach (var aiPlayer in _aiPlayers)
+                    aiPlayer.Score = 0;
             }
         }
 
@@ -463,7 +503,7 @@ namespace SnakeGame
                 return;
             }
 
-            if (!_alive && keyboardState.IsKeyDown(Keys.Space))
+            if (!_alive && _player.IsHuman && keyboardState.IsKeyDown(Keys.Space))
             {
                 Reset();
                 return;
@@ -554,10 +594,6 @@ namespace SnakeGame
 
         private void Reset()
         {
-            do
-            {
-                _applePosition = new Point(_rng.Next(FIELD_WIDTH), _rng.Next(FIELD_HEIGHT));
-            } while (_applePosition == Point.Zero);
             _alive = true;
             _direction = new Point(1, 0);
             _lastDirection = _direction;
@@ -567,6 +603,7 @@ namespace SnakeGame
             SnakeSize = 10;
             _turns = 0;
             _turnsSinceApple = 0;
+            _applePosition = GetFreePoint();
 
             _player?.Shutdown();
             _player = _aiPlayers[_aiPlayerIndex].Player;
@@ -604,11 +641,7 @@ namespace SnakeGame
             {
                 _turnsSinceApple = 0;
                 SnakeSize += 5;
-                do
-                {
-                    _applePosition.X = _rng.Next(FIELD_WIDTH);
-                    _applePosition.Y = _rng.Next(FIELD_HEIGHT);
-                } while (_snake.Contains(_applePosition));
+                _applePosition = GetFreePoint();
             }
 
             _lastDirection = _direction;

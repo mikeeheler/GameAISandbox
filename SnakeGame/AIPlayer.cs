@@ -115,7 +115,7 @@ namespace SnakeGame
                 double roll = MersenneTwister.Default.NextDouble() * totalSum;
                 double sum = 0.0;
                 int index = 0;
-                while (sum < roll && index <= moves.Length)
+                while (sum < roll && index < moves.Length)
                     sum += moves[index++].Item1;
                 move = moves[--index].Item2;
             }
