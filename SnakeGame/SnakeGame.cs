@@ -49,7 +49,8 @@ namespace SnakeGame
         private Texture2D _smallSquareTexture;
         private Texture2D _snakeAliveTexture;
         private Texture2D _snakeDeadTexture;
-        private Texture2D _tileTexture;
+        private Texture2D _tileDarkTexture;
+        private Texture2D _tileLightTexture;
 
         private Point _lastDirection;
         private Point _lastPosition;
@@ -131,17 +132,6 @@ namespace SnakeGame
         public Point SnakePosition => _lastPosition;
         public int SnakeSize { get; private set; }
 
-        public double[] GetBoardValues()
-        {
-            var result = Matrix<double>.Build.Dense(FIELD_HEIGHT, FIELD_WIDTH, 0.0);
-            result[_applePosition.Y, _applePosition.X] = 1.0;
-            foreach (Point snakePiece in _snake)
-            {
-                result[snakePiece.Y, snakePiece.X] = -1.0;
-            }
-            return result.AsColumnMajorArray();
-        }
-
         public double[] GetSnakeVision()
         {
             Point forward = _lastDirection;
@@ -218,7 +208,7 @@ namespace SnakeGame
             _smallSquareTexture = Content.Load<Texture2D>("Textures/square8x8");
             _snakeDeadTexture = Content.Load<Texture2D>("Textures/dead");
             _snakeAliveTexture = Content.Load<Texture2D>("Textures/square");
-            _tileTexture = Content.Load<Texture2D>("Textures/tile");
+            _tileLightTexture = Content.Load<Texture2D>("Textures/tile");
 
             OnResize(null, EventArgs.Empty);
         }
@@ -336,8 +326,8 @@ namespace SnakeGame
                 for (tilePosition.X = 0; tilePosition.X < FIELD_WIDTH / 2; ++tilePosition.X)
                 {
                     _spriteBatch.Draw(
-                        _tileTexture,
-                        (_fieldTopLeft + tilePosition * _tileTexture.Bounds.Size).ToVector2(),
+                        _tileLightTexture,
+                        (_fieldTopLeft + tilePosition * _tileLightTexture.Bounds.Size).ToVector2(),
                         Color.White);
                 }
             }
@@ -597,8 +587,8 @@ namespace SnakeGame
             int windowHeight = Window.ClientBounds.Height;
             int windowWidth = Window.ClientBounds.Width;
 
-            int fieldHeight = FIELD_HEIGHT * _tileTexture.Height / 2;
-            int fieldWidth = FIELD_WIDTH * _tileTexture.Width / 2;
+            int fieldHeight = FIELD_HEIGHT * _tileLightTexture.Height / 2;
+            int fieldWidth = FIELD_WIDTH * _tileLightTexture.Width / 2;
 
             _fieldTopLeft.X = (windowWidth - fieldWidth) / 2;
             _fieldTopLeft.Y = (windowHeight - fieldHeight) / 2;
