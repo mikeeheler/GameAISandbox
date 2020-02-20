@@ -19,8 +19,8 @@ namespace SnakeGame
 
         const int GAMES_PER_GENERATION = 100;
         const int MAX_AI_TURNS = FIELD_HEIGHT * FIELD_WIDTH;
-        const double MUTATION_RATE = 0.25;
-        const int POPULATION_SIZE = 500;
+        const double MUTATION_RATE = 0.40;
+        const int POPULATION_SIZE = 100;
 
         const double RAD90 = Math.PI * 0.5;
         const double RAD180 = Math.PI;
@@ -69,7 +69,12 @@ namespace SnakeGame
         private int _aiPlayerIndex;
         private int _gamesPlayed;
         private int _generation;
-        private int _lastGenBestScore;
+        private int _allTimeBestScore;
+        private int _allTimeBestSpecies;
+        private int _allTimeBestUnit;
+        private int _thisGenBestScore;
+        private int _thisGenBestSpecies;
+        private int _thisGenBestUnit;
         private int _turns;
         private int _turnsSinceApple;
 
@@ -92,7 +97,9 @@ namespace SnakeGame
             _aiPlayerIndex = 0;
             _gamesPlayed = 0;
             _generation = 0;
-            _lastGenBestScore = 0;
+            _allTimeBestScore = 0;
+            _allTimeBestSpecies = 0;
+            _allTimeBestUnit = 0;
             _fieldTopLeft = new Point(0, 0);
 
             _backgroundColor = new Color(0.1f, 0.1f, 0.1f);
@@ -389,10 +396,11 @@ namespace SnakeGame
                 .Append($"gen: {_generation:N0}; ")
                 .Append($"idx: {_aiPlayerIndex:N0}; ")
                 .Append($"id: {_aiPlayers[_aiPlayerIndex].Player.Id:N0}; ")
-                .AppendLine($"species: {_aiPlayers[_aiPlayerIndex].Player.SpeciesId:N0}")
-                .Append($"games: {_gamesPlayed:N0}; ")
+                .Append($"species: {_aiPlayers[_aiPlayerIndex].Player.SpeciesId:N0}; ")
+                .AppendLine($"games: {_gamesPlayed:N0}")
                 .Append($"score: {_aiPlayers[_aiPlayerIndex].Score:N0}; ")
-                .AppendLine($"best: {_lastGenBestScore:N0}")
+                .Append($"this-gen: {_thisGenBestScore:N0} ({_thisGenBestUnit}/{_thisGenBestSpecies}); ")
+                .AppendLine($"all-time: {_allTimeBestScore:N0} ({_allTimeBestUnit}/{_allTimeBestSpecies}) ")
                 .Append($"brain: {GetBrainTypeName(_aiPlayers[_aiPlayerIndex].Player.BrainType)}");
 
             _spriteBatch.DrawString(_uiFont, stringBuilder, Vector2.Zero, Color.LightGray);
@@ -444,17 +452,34 @@ namespace SnakeGame
             double distanceToApple = 1.0 / (_applePosition - _lastPosition).ToVector2().Length() * 100.0;
             activePlayer.Score += applesEaten;
             _gamesPlayed++;
+
+            if (activePlayer.Score > _thisGenBestScore)
+            {
+                _thisGenBestScore = activePlayer.Score;
+                _thisGenBestSpecies = (int)activePlayer.Player.SpeciesId;
+                _thisGenBestUnit = (int)activePlayer.Player.Id;
+            }
+
+            if (_thisGenBestScore > _allTimeBestScore)
+            {
+                _allTimeBestScore = _thisGenBestScore;
+                _allTimeBestSpecies = _thisGenBestSpecies;
+                _allTimeBestUnit = _thisGenBestUnit;
+            }
+
             if (_gamesPlayed < GAMES_PER_GENERATION)
                 return;
 
             _aiPlayerIndex++;
             _gamesPlayed = 0;
-            _lastGenBestScore = Math.Max(activePlayer.Score, _lastGenBestScore);
 
             if (_aiPlayerIndex == POPULATION_SIZE)
             {
                 _aiPlayerIndex = 0;
                 _generation++;
+                _thisGenBestScore = 0;
+                _thisGenBestSpecies = 0;
+                _thisGenBestUnit = 0;
 
                 var sorted = _aiPlayers.OrderByDescending(x => x.Score).ToList();
                 _aiPlayers = new List<AIPlayerScore>() { Capacity = POPULATION_SIZE };
