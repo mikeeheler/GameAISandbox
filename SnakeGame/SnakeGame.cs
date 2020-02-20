@@ -14,11 +14,7 @@ namespace SnakeGame
 {
     public class SnakeGame : Game
     {
-        const int FIELD_HEIGHT = 20;
-        const int FIELD_WIDTH = 20;
-
         const int GAMES_PER_GENERATION = 100;
-        const int MAX_AI_TURNS = FIELD_HEIGHT * FIELD_WIDTH;
         const double MUTATION_RATE = 0.40;
         const int POPULATION_SIZE = 100;
 
@@ -29,6 +25,7 @@ namespace SnakeGame
         const string QUIT_MESSAGE = "Q to quit";
         const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
 
+        private readonly SnakeGameState _gameState;
         private readonly GraphicsDeviceManager _graphicsDeviceManager;
         private readonly RandomSource _rng;
 
@@ -52,18 +49,12 @@ namespace SnakeGame
         private Texture2D _tileDarkTexture;
         private Texture2D _tileLightTexture;
 
-        private Point _lastDirection;
-        private Point _lastPosition;
         private TimeSpan _lastTick;
         private int _ticks;
         private bool _tickEnabled;
         private double _tickRate = 0.125;
 
-        private bool _alive;
-        private Point _applePosition;
-        private Point _direction;
         private Point _fieldTopLeft;
-        private Queue<Point> _snake;
         private IPlayerController _player;
 
         private List<AIPlayerScore> _aiPlayers;
@@ -76,8 +67,6 @@ namespace SnakeGame
         private int _thisGenBestScore;
         private int _thisGenBestSpecies;
         private int _thisGenBestUnit;
-        private int _turns;
-        private int _turnsSinceApple;
 
         private bool _tabDown;
         private bool _plusDown;
@@ -85,6 +74,7 @@ namespace SnakeGame
 
         public SnakeGame()
         {
+            _gameState = new SnakeGameState();
             _graphicsDeviceManager = new GraphicsDeviceManager(this)
             {
                 PreferredBackBufferHeight = 720,
@@ -120,59 +110,6 @@ namespace SnakeGame
             Window.AllowUserResizing = true;
             Window.ClientSizeChanged += OnResize;
             Window.Title = "Snake Game AI Sandbox";
-        }
-
-        public int FieldHeight { get; } = FIELD_HEIGHT;
-        public int FieldWidth { get; } = FIELD_WIDTH;
-
-        public int Score => _snake.Count;
-
-        public Point ApplePosition => _applePosition;
-        public Point Direction => _lastDirection;
-        public Point SnakePosition => _lastPosition;
-        public int SnakeSize { get; private set; }
-
-        public double[] GetSnakeVision()
-        {
-            Point forward = _lastDirection;
-            Point left = new Point(forward.Y, -forward.X);
-            Point right = new Point(-forward.Y, forward.X);
-            Point behind = new Point(-forward.X, -forward.Y);
-            // MAX_AI_TURNS is like a shot clock, and danger computes how much stress the snake feels to get a shot off
-            // The intention is that the snake will evolve to give more weight to the apple as this increases
-            // In reality, the snake will do what it wants.
-            double danger = (double)_turnsSinceApple / MAX_AI_TURNS;
-            return new double[] { danger*danger } // danger squared
-                .Concat(Look(forward))
-                .Concat(Look(forward + left))
-                .Concat(Look(left))
-                .Concat(Look(behind + left))
-                //.Concat(Look(behind)) // Should the snake be able to see behind its head?
-                .Concat(Look(behind + right))
-                .Concat(Look(right))
-                .Concat(Look(forward + right))
-                .ToArray();
-        }
-
-        public bool IsCollision(Point point)
-            => IsWallCollision(point) || _snake.Contains(point);
-
-        public bool IsWallCollision(Point point)
-            => point.Y < 0
-                || point.Y >= FIELD_HEIGHT
-                || point.X < 0
-                || point.X >= FIELD_WIDTH;
-
-        public bool IsLegalMove(PlayerMovement move)
-        {
-            return move switch
-            {
-                PlayerMovement.Down => _lastDirection.Y != -1,
-                PlayerMovement.Left => _lastDirection.X != 1,
-                PlayerMovement.Right => _lastDirection.X != -1,
-                PlayerMovement.Up => _lastDirection.Y != 1,
-                _ => throw new ArgumentOutOfRangeException(nameof(move), move, ""),
-            };
         }
 
         protected override void Draw(GameTime gameTime)
@@ -224,7 +161,8 @@ namespace SnakeGame
             {
                 UpdateEntities(diff);
 
-                if (!_alive && !_player.IsHuman)
+                if (!_player.IsHuman
+                    && (!_gameState.Alive || _gameState.TotalTurns == SnakeRules.MAX_AI_TURNS))
                 {
                     HandleAI();
                     Reset();
@@ -321,9 +259,9 @@ namespace SnakeGame
             Point tilePosition = Point.Zero;
 
             _spriteBatch.Begin();
-            for (tilePosition.Y = 0; tilePosition.Y < FIELD_HEIGHT / 2; ++tilePosition.Y)
+            for (tilePosition.Y = 0; tilePosition.Y < SnakeRules.FIELD_HEIGHT / 2; ++tilePosition.Y)
             {
-                for (tilePosition.X = 0; tilePosition.X < FIELD_WIDTH / 2; ++tilePosition.X)
+                for (tilePosition.X = 0; tilePosition.X < SnakeRules.FIELD_WIDTH / 2; ++tilePosition.X)
                 {
                     _spriteBatch.Draw(
                         _tileLightTexture,
@@ -339,13 +277,13 @@ namespace SnakeGame
             _spriteBatch.Begin();
             _spriteBatch.Draw(
                 _appleTexture,
-                (_fieldTopLeft + _applePosition * _appleTexture.Bounds.Size).ToVector2(),
+                (_fieldTopLeft + _gameState.ApplePosition * _appleTexture.Bounds.Size).ToVector2(),
                 Color.White);
-            Texture2D square = _alive ? _snakeAliveTexture : _snakeDeadTexture;
+            Texture2D square = _gameState.Alive ? _snakeAliveTexture : _snakeDeadTexture;
             int pieceCount = 0;
-            foreach (Point snakePiece in _snake)
+            foreach (Point snakePiece in _gameState.Snake)
             {
-                float ratio = Convert.ToSingle((double)pieceCount / _snake.Count) * 0.5f + 0.5f;
+                float ratio = Convert.ToSingle((double)pieceCount / _gameState.Snake.Count) * 0.5f + 0.5f;
                 _spriteBatch.Draw(
                     square,
                     (_fieldTopLeft + snakePiece * square.Bounds.Size).ToVector2(),
@@ -361,12 +299,12 @@ namespace SnakeGame
 
             _spriteBatch.DrawString(_uiFont, QUIT_MESSAGE, _quitMessagePos, Color.LightGray);
 
-            string scoreMessage = $"size: {SnakeSize:N0}; fps: {fps:N0}; tavg: {gameTime/_ticks:N2}";
+            string scoreMessage = $"size: {_gameState.SnakeSize:N0}; fps: {fps:N0}; tavg: {gameTime/_ticks:N2}";
             Point scoreMessageSize = _uiFont.MeasureString(scoreMessage).ToPoint();
             Point scoreMessagePosition = Window.ClientBounds.Size - scoreMessageSize;
             _spriteBatch.DrawString(_uiFont, scoreMessage, scoreMessagePosition.ToVector2(), Color.LightGray);
 
-            if (!_alive)
+            if (!_gameState.Alive)
             {
                 _spriteBatch.DrawString(_uiFont, GAME_OVER_MESSAGE, _gameOverMessagePos, Color.LightGoldenrodYellow);
                 _spriteBatch.DrawString(_uiFont, TRY_AGAIN_MESSAGE, _tryAgainMessagePos, Color.LightGoldenrodYellow);
@@ -412,7 +350,7 @@ namespace SnakeGame
         {
             return Enumerable.Range(0, size).Select(_ =>
             {
-                var player = new AIPlayer();
+                var player = new AIPlayerController();
                 return new AIPlayerScore { Player = player, Score = 0 };
             });
         }
@@ -427,20 +365,11 @@ namespace SnakeGame
             return shadeColor;
         }
 
-        private Point GetFreePoint()
-        {
-            Point result = new Point();;
-            do { result.X = _rng.Next(FIELD_WIDTH); result.Y = _rng.Next(FIELD_HEIGHT); }
-            while (result == _applePosition && _snake.Contains(result));
-            return result;
-        }
-
         private void HandleAI()
         {
-            int applesEaten = (SnakeSize - 10) / 5;
             var activePlayer = _aiPlayers[_aiPlayerIndex];
-            double distanceToApple = 1.0 / (_applePosition - _lastPosition).ToVector2().Length() * 100.0;
-            activePlayer.Score += applesEaten;
+
+            activePlayer.Score += _gameState.ApplesEaten;
             _gamesPlayed++;
 
             if (activePlayer.Score > _thisGenBestScore)
@@ -518,7 +447,7 @@ namespace SnakeGame
                 return;
             }
 
-            if (!_alive && _player.IsHuman && keyboardState.IsKeyDown(Keys.Space))
+            if (!_gameState.Alive && _player.IsHuman && keyboardState.IsKeyDown(Keys.Space))
             {
                 Reset();
                 return;
@@ -552,43 +481,13 @@ namespace SnakeGame
             }
         }
 
-        private double[] Look(Point direction)
-        {
-            // 0 = distance to apple, if in this direction
-            // 1 = distance to tail, if in this direction
-            // 2 = distance to wall in this direction
-            double[] result = { 0.0, 0.0, 0.0 };
-            Point lookPos = _lastPosition;
-            int distance = 0;
-            bool snakeFound = false;
-            do
-            {
-                lookPos += direction;
-                ++distance;
-
-                if (IsWallCollision(lookPos))
-                {
-                    result[2] = 1.0 / distance;
-                    return result;
-                }
-
-                if (lookPos == _applePosition)
-                    result[0] = 1.0 / distance;
-                if (!snakeFound && _snake.Contains(lookPos))
-                {
-                    result[1] = 1.0 / distance;
-                    snakeFound = true;
-                }
-            } while (true);
-        }
-
         private void OnResize(object sender, EventArgs e)
         {
             int windowHeight = Window.ClientBounds.Height;
             int windowWidth = Window.ClientBounds.Width;
 
-            int fieldHeight = FIELD_HEIGHT * _tileLightTexture.Height / 2;
-            int fieldWidth = FIELD_WIDTH * _tileLightTexture.Width / 2;
+            int fieldHeight = SnakeRules.FIELD_HEIGHT * _tileLightTexture.Height / 2;
+            int fieldWidth = SnakeRules.FIELD_WIDTH * _tileLightTexture.Width / 2;
 
             _fieldTopLeft.X = (windowWidth - fieldWidth) / 2;
             _fieldTopLeft.Y = (windowHeight - fieldHeight) / 2;
@@ -609,63 +508,20 @@ namespace SnakeGame
 
         private void Reset()
         {
-            _alive = true;
-            _direction = new Point(1, 0);
-            _lastDirection = _direction;
-            _lastPosition = new Point(9, 9);
-            _snake = new Queue<Point>(FIELD_HEIGHT * FIELD_WIDTH);
-            _snake.Enqueue(_lastPosition);
-            SnakeSize = 10;
-            _turns = 0;
-            _turnsSinceApple = 0;
-            _applePosition = GetFreePoint();
-
+            _gameState.Reset();
             _player?.Shutdown();
             _player = _aiPlayers[_aiPlayerIndex].Player;
-            _player.Initialize(this);
+            _player.Initialize();
         }
 
         private void UpdateEntities(TimeSpan _)
         {
-            if (!_alive)
-                return;
-
-            ++_turnsSinceApple;
-            ++_turns;
-
-            switch (_player.GetMovement())
-            {
-                case PlayerMovement.Down: _direction.X = 0; _direction.Y = 1; break;
-                case PlayerMovement.Left: _direction.X = -1; _direction.Y = 0; break;
-                case PlayerMovement.Right: _direction.X = 1; _direction.Y = 0; break;
-                case PlayerMovement.Up: _direction.X = 0; _direction.Y = -1; break;
-            }
-
-            Point newPosition = _lastPosition + _direction;
-            if (IsCollision(newPosition) || _turnsSinceApple == MAX_AI_TURNS)
-            {
-                _alive = false;
-                return;
-            }
-
-            _snake.Enqueue(newPosition);
-            while (_snake.Count >= SnakeSize)
-                _snake.Dequeue();
-
-            if (newPosition == _applePosition)
-            {
-                _turnsSinceApple = 0;
-                SnakeSize += 5;
-                _applePosition = GetFreePoint();
-            }
-
-            _lastDirection = _direction;
-            _lastPosition = newPosition;
+            _gameState.Move(_player.GetMovement(_gameState));
         }
 
         private class AIPlayerScore
         {
-            public AIPlayer Player { get; set; }
+            public AIPlayerController Player { get; set; }
             public int Score { get; set; }
         }
     }

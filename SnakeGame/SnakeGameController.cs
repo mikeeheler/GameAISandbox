@@ -2,18 +2,18 @@
 {
     public class SnakeGameController
     {
-        public SnakeGameController(ISnakeGameState gameState, IPlayerController player)
+        public SnakeGameController(SnakeGameState gameState, IPlayerController player)
         {
             GameState = gameState;
             Player = player;
         }
 
-        public ISnakeGameState GameState { get; }
+        public SnakeGameState GameState { get; }
         public IPlayerController Player { get; }
 
         public void Update()
         {
-            var move = Player.GetMovement();
+            var move = Player.GetMovement(GameState);
             GameState.Move(move);
         }
     }

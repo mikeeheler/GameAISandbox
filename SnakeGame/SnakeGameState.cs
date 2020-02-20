@@ -9,7 +9,7 @@ using Microsoft.Xna.Framework;
 
 namespace SnakeGame
 {
-    public class SnakeGameState : ISnakeGameState
+    public class SnakeGameState
     {
         private readonly RandomSource _rng;
         private readonly Queue<Point> _snake;
@@ -17,18 +17,21 @@ namespace SnakeGame
         private Point _applePosition;
         private Point _currentPosition;
         private Point _lastDirection;
-        private int _targetSize;
 
         public SnakeGameState()
         {
             _rng = MersenneTwister.Default;
             _snake = new Queue<Point>();
+            Reset();
         }
 
         public bool Alive { get; private set; }
         public int ApplesEaten { get; private set; }
         public Point ApplePosition => _applePosition;
         public IReadOnlyCollection<Point> Snake => _snake.Select(p => new Point(p.X, p.Y)).ToArray();
+        public int SnakeSize { get; private set; }
+        public int TotalTurns { get; private set; }
+        public int TurnsSinceEating { get; private set; }
 
         public TileState GetTile(Point point)
         {
@@ -44,8 +47,9 @@ namespace SnakeGame
             return TileState.Empty;
         }
 
-        public Matrix<double> GetVision(Point position, Point forward)
+        public Matrix<double> GetVision()
         {
+            Point forward = _lastDirection;
             Point left = new Point(forward.Y, -forward.X);
             Point right = new Point(-forward.Y, forward.X);
             Point behind = new Point(-forward.X, -forward.Y);
@@ -53,13 +57,13 @@ namespace SnakeGame
             // 3x8 matrix; each column encodes the data for a particular direction.
             // i.e. forward: m[0,0] = apple, m[1,0] = snake, m[2,0] = wall
             return Matrix<double>.Build.Dense(3, 8,
-                Look(position, forward)
-                .Concat(Look(position, forward + left))
-                .Concat(Look(position, left))
-                .Concat(Look(position, behind + left))
-                .Concat(Look(position, forward + right))
-                .Concat(Look(position, right))
-                .Concat(Look(position, behind + right))
+                Look(_currentPosition, forward)
+                .Concat(Look(_currentPosition, forward + left))
+                .Concat(Look(_currentPosition, left))
+                .Concat(Look(_currentPosition, behind + left))
+                .Concat(Look(_currentPosition, forward + right))
+                .Concat(Look(_currentPosition, right))
+                .Concat(Look(_currentPosition, behind + right))
                 .ToArray());
         }
 
@@ -73,20 +77,24 @@ namespace SnakeGame
         {
             Debug.Assert(IsLegalMove(move));
 
-            if (!Alive)
+            if (!(Alive && IsLegalMove(move)))
                 return;
 
             Point direction = GetDirection(move);
             Point newPosition = _currentPosition + direction;
+            TotalTurns++;
+            TurnsSinceEating++;
 
             switch (GetTile(newPosition))
             {
                 case TileState.Apple:
                     ApplesEaten++;
-                    _targetSize += SnakeRules.GROW_LENGTH;
+                    SnakeSize += SnakeRules.GROW_LENGTH;
                     do { _applePosition = GetRandomPoint(); }
                     while (_applePosition == newPosition && GetTile(_applePosition) != TileState.Empty);
+                    TurnsSinceEating = 0;
                     break;
+
                 case TileState.Empty: break;
                 case TileState.Snake:
                 case TileState.Void:
@@ -95,7 +103,7 @@ namespace SnakeGame
             }
 
             _snake.Enqueue(newPosition);
-            while (_snake.Count > _targetSize)
+            while (_snake.Count > SnakeSize)
                 _snake.Dequeue();
 
             _currentPosition = newPosition;
@@ -111,7 +119,9 @@ namespace SnakeGame
             _lastDirection = Point.Zero;
             _snake.Clear();
             _snake.Enqueue(_currentPosition);
-            _targetSize = SnakeRules.START_LENGTH;
+            SnakeSize = SnakeRules.START_LENGTH;
+            TotalTurns = 0;
+            TurnsSinceEating = 0;
         }
 
         private Point GetDirection(PlayerMovement move)

@@ -7,16 +7,15 @@ using MathNet.Numerics.Random;
 
 namespace SnakeGame
 {
-    public class AIPlayer : IPlayerController
+    public class AIPlayerController : IPlayerController
     {
         private static long _globalId = 0;
 
         private AIBrain _brain;
         private bool _isInitialized;
         private PlayerMovement _lastMovement;
-        private SnakeGame _snakeGame;
 
-        public AIPlayer()
+        public AIPlayerController()
         {
             Id = Interlocked.Increment(ref _globalId);
             _isInitialized = false;
@@ -31,24 +30,22 @@ namespace SnakeGame
         public bool IsHuman { get; } = false;
         public long SpeciesId { get; private set; }
 
-        public AIPlayer Clone()
+        public AIPlayerController Clone()
         {
-            return new AIPlayer
+            return new AIPlayerController
             {
                 _brain = _brain.Clone(),
                 _isInitialized = true,
-                _snakeGame = _snakeGame,
                 SpeciesId = SpeciesId
             };
         }
 
-        public AIPlayer BreedWith(AIPlayer consentingAdult, AIBreedingMode breedingMode)
+        public AIPlayerController BreedWith(AIPlayerController consentingAdult, AIBreedingMode breedingMode)
         {
-            return new AIPlayer
+            return new AIPlayerController
             {
                 _brain = _brain.MergeWith(consentingAdult._brain, breedingMode),
                 _isInitialized = true,
-                _snakeGame = _snakeGame,
                 SpeciesId = SpeciesId
             };
         }
@@ -56,15 +53,14 @@ namespace SnakeGame
         public AIBrain CloneBrain()
             => _brain.Clone();
 
-        public PlayerMovement GetMovement()
-            => GetNextMove();
+        public PlayerMovement GetMovement(SnakeGameState gameState)
+            => GetNextMove(gameState);
 
-        public void Initialize(SnakeGame snakeGame)
+        public void Initialize()
         {
             if (_isInitialized)
                 return;
 
-            _snakeGame = snakeGame;
             _brain = new AIBrain(22, 18, 3);
             _isInitialized = true;
         }
@@ -78,12 +74,16 @@ namespace SnakeGame
         {
         }
 
-        private PlayerMovement GetNextMove()
+        private PlayerMovement GetNextMove(SnakeGameState gameState)
         {
-            var result = _brain.Compute(_snakeGame.GetSnakeVision());
+            double[] vision = gameState.GetVision().ToColumnMajorArray();
+            double[] computeValues = new double[1 + vision.Length];
+            Array.Copy(vision, 0, computeValues, 1, vision.Length);
+            computeValues[0] = Math.Sqrt(1.0 / gameState.TurnsSinceEating);
+
+            var result = _brain.Compute(computeValues);
             Decision = Vector<float>.Build.Dense(result);
 
-            // Normalize values to make the sum ~=1.0
             var probabilities = Decision.Clone();
             // All negative probabilities; raise them until none are negative (the least desired will have 0 probability)
             if (probabilities.Maximum() < 0.0f)
