@@ -79,7 +79,7 @@ namespace SnakeGame
             double[] vision = gameState.GetVision().ToColumnMajorArray();
             double[] computeValues = new double[1 + vision.Length];
             Array.Copy(vision, 0, computeValues, 1, vision.Length);
-            computeValues[0] = Math.Sqrt(1.0 / gameState.TurnsSinceEating);
+            computeValues[0] = (double)gameState.TurnsSinceEating / SnakeRules.MAX_AI_TURNS;
 
             var result = _brain.Compute(computeValues);
             Decision = Vector<float>.Build.Dense(result);
