@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 
-using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.Random;
 
 using Microsoft.Xna.Framework;
@@ -47,15 +47,14 @@ namespace SnakeGame
         private Texture2D _arrowTexture;
         private Texture2D _smallSquareTexture;
         private Texture2D _snakeCellTexture;
-        private Texture2D _tileDarkTexture;
-        private Texture2D _tileLightTexture;
+        private Texture2D _fieldTexture;
 
         private TimeSpan _lastTick;
         private int _ticks;
         private bool _tickEnabled;
         private double _tickRate = 0.125;
 
-        private Point _fieldTopLeft;
+        private Vector2 _fieldTopLeft;
         private IPlayerController _player;
 
         private List<AIPlayerScore> _aiPlayers;
@@ -92,7 +91,7 @@ namespace SnakeGame
             _allTimeBestScore = 0;
             _allTimeBestSpecies = 0;
             _allTimeBestUnit = 0;
-            _fieldTopLeft = new Point(0, 0);
+            _fieldTopLeft = Vector2.Zero;
 
             _activeNeuronColor = new Color(0.5f, 1.0f, 0.5f);
             _backgroundColor = new Color(0.1f, 0.1f, 0.1f);
@@ -121,10 +120,12 @@ namespace SnakeGame
 
             float fps = (float)(1000.0 / gameTime.ElapsedGameTime.TotalMilliseconds);
 
+            _spriteBatch.Begin(SpriteSortMode.Deferred, null, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
             DrawField();
             DrawEntities();
             DrawUI(fps, gameTime.TotalGameTime.TotalMilliseconds);
             DrawDebug();
+            _spriteBatch.End();
 
             base.Draw(gameTime);
         }
@@ -148,8 +149,7 @@ namespace SnakeGame
             _arrowTexture = Content.Load<Texture2D>("Textures/arrow");
             _smallSquareTexture = CreateTexture(8, 8, Color.White);
             _snakeCellTexture = Content.Load<Texture2D>("Textures/square");
-            _tileDarkTexture = Content.Load<Texture2D>("Textures/tile-dark");
-            _tileLightTexture = Content.Load<Texture2D>("Textures/tile-light");
+            _fieldTexture = CreateFieldTexture();
 
             OnResize(null, EventArgs.Empty);
 
@@ -199,6 +199,54 @@ namespace SnakeGame
             });
         }
 
+        private Texture2D CreateFieldTexture()
+        {
+            var tileDarkTexture = Content.Load<Texture2D>("Textures/tile-dark");
+            var tileLightTexture = Content.Load<Texture2D>("Textures/tile-light");
+
+            Debug.Assert(tileDarkTexture.Height == tileLightTexture.Height);
+            Debug.Assert(tileDarkTexture.Width == tileLightTexture.Width);
+
+            // Render the field to a single texture because drawing 400 sprites every frame is slow
+            using var renderTarget = new RenderTarget2D(
+                tileDarkTexture.GraphicsDevice,
+                SnakeRules.FIELD_WIDTH * tileDarkTexture.Width,
+                SnakeRules.FIELD_HEIGHT * tileDarkTexture.Height);
+            var result = new Texture2D(
+                tileDarkTexture.GraphicsDevice,
+                SnakeRules.FIELD_WIDTH * tileDarkTexture.Width,
+                SnakeRules.FIELD_HEIGHT * tileDarkTexture.Height);
+
+            GraphicsDevice.SetRenderTarget(renderTarget);
+            GraphicsDevice.Clear(Color.Black);
+
+            _spriteBatch.Begin();
+            Point tilePosition = Point.Zero;
+
+            for (tilePosition.Y = 0; tilePosition.Y < SnakeRules.FIELD_HEIGHT; ++tilePosition.Y)
+            {
+                for (tilePosition.X = 0; tilePosition.X < SnakeRules.FIELD_WIDTH; ++tilePosition.X)
+                {
+                    Texture2D cellTexture = (tilePosition.X + tilePosition.Y) % 2 == 0
+                        ? tileLightTexture
+                        : tileDarkTexture;
+                    _spriteBatch.Draw(
+                        cellTexture,
+                        (tilePosition * cellTexture.Bounds.Size).ToVector2(),
+                        Color.White);
+                }
+            }
+            _spriteBatch.End();
+
+            GraphicsDevice.SetRenderTarget(null);
+
+            Color[] fieldData = new Color[renderTarget.Width * renderTarget.Height];
+            renderTarget.GetData(fieldData);
+            result.SetData(fieldData);
+
+            return result;
+        }
+
         private Texture2D CreateTexture(int width, int height, Color color)
         {
             var result = new Texture2D(GraphicsDevice, width, height);
@@ -220,7 +268,6 @@ namespace SnakeGame
 
             Vector2 topLeft = new Vector2(336, 310);
             Vector2 offset = new Vector2(16, 0);
-            _spriteBatch.Begin();
             for (int layerIndex = 0; layerIndex < values.Length; ++layerIndex)
             {
                 if (values[layerIndex] == null)
@@ -234,8 +281,6 @@ namespace SnakeGame
                     DrawSmallSquare(topLeft + pos, (float)layer[y]);
                 }
             }
-
-            _spriteBatch.End();
         }
 
         private void DrawDebugArrow(Vector2 position, Vector2 offset, Color color, float rotation)
@@ -261,40 +306,22 @@ namespace SnakeGame
             float left = aiDecision[1];
             float right = aiDecision[2];
 
-            _spriteBatch.Begin();
             DrawDebugArrow(topLeft, offset, GetDebugColor(up), (float)RAD90);
             DrawDebugArrow(topLeft + new Vector2(-16, 32), offset, GetDebugColor(left), 0.0f);
             DrawDebugArrow(topLeft + new Vector2(16, 32), offset, GetDebugColor(right), (float)RAD180);
-            _spriteBatch.End();
         }
 
         private void DrawField()
         {
-            Point tilePosition = Point.Zero;
-
-            _spriteBatch.Begin();
-            for (tilePosition.Y = 0; tilePosition.Y < SnakeRules.FIELD_HEIGHT; ++tilePosition.Y)
-            {
-                for (tilePosition.X = 0; tilePosition.X < SnakeRules.FIELD_WIDTH; ++tilePosition.X)
-                {
-                    Texture2D cellTexture = (tilePosition.X + tilePosition.Y) % 2 == 0
-                        ? _tileLightTexture
-                        : _tileDarkTexture;
-                    _spriteBatch.Draw(
-                        cellTexture,
-                        (_fieldTopLeft + tilePosition * cellTexture.Bounds.Size).ToVector2(),
-                        Color.White);
-                }
-            }
-            _spriteBatch.End();
+            //_spriteBatch.Draw(_fieldTexture, _fieldTopLeft.ToVector2(), Color.White);
+            _spriteBatch.Draw(_fieldTexture, _fieldTopLeft, null, Color.White, 0.0f, Vector2.Zero, 1.0f, SpriteEffects.None, 0.0f);
         }
 
         private void DrawEntities()
         {
-            _spriteBatch.Begin();
             _spriteBatch.Draw(
                 _appleTexture,
-                (_fieldTopLeft + _gameState.ApplePosition * _appleTexture.Bounds.Size).ToVector2(),
+                _fieldTopLeft + (_gameState.ApplePosition * _appleTexture.Bounds.Size).ToVector2(),
                 Color.White);
             Color squareColor = _gameState.Alive ? _snakeAliveColor : _snakeDeadColor;
             int pieceCount = 0;
@@ -305,17 +332,14 @@ namespace SnakeGame
                 color.A = 255;
                 _spriteBatch.Draw(
                     _snakeCellTexture,
-                    (_fieldTopLeft + snakePiece * _snakeCellTexture.Bounds.Size).ToVector2(),
+                    _fieldTopLeft + (snakePiece * _snakeCellTexture.Bounds.Size).ToVector2(),
                     color);
                 ++pieceCount;
             }
-            _spriteBatch.End();
         }
 
         private void DrawUI(double fps, double gameTime)
         {
-            _spriteBatch.Begin();
-
             _spriteBatch.DrawString(_uiFont, QUIT_MESSAGE, _quitMessagePos, Color.LightGray);
 
             string scoreMessage = $"size: {_gameState.SnakeSize:N0}; fps: {fps:N0}; tavg: {gameTime/_ticks:N2}";
@@ -351,8 +375,6 @@ namespace SnakeGame
                 .Append($"brain: {GetBrainTypeName(_aiPlayers[_aiPlayerIndex].Player.BrainType)}");
 
             _spriteBatch.DrawString(_uiFont, stringBuilder, Vector2.Zero, Color.LightGray);
-
-            _spriteBatch.End();
         }
 
         private IEnumerable<AIPlayerScore> Evolve(AIPlayerScore input, int count)
@@ -505,8 +527,8 @@ namespace SnakeGame
             int windowHeight = Window.ClientBounds.Height;
             int windowWidth = Window.ClientBounds.Width;
 
-            int fieldHeight = SnakeRules.FIELD_HEIGHT * _tileLightTexture.Height / 2;
-            int fieldWidth = SnakeRules.FIELD_WIDTH * _tileLightTexture.Width / 2;
+            int fieldHeight = _fieldTexture.Height;
+            int fieldWidth = _fieldTexture.Width;
 
             _fieldTopLeft.X = (windowWidth - fieldWidth) / 2;
             _fieldTopLeft.Y = (windowHeight - fieldHeight) / 2;

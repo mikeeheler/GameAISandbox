@@ -76,7 +76,7 @@ namespace SnakeGame
 
         private PlayerMovement GetNextMove(SnakeGameState gameState)
         {
-            double[] vision = gameState.GetVision().ToColumnMajorArray();
+            double[] vision = gameState.GetVision();
             double[] computeValues = new double[1 + vision.Length];
             Array.Copy(vision, 0, computeValues, 1, vision.Length);
             computeValues[0] = (double)gameState.TurnsSinceEating / SnakeRules.MAX_AI_TURNS;

@@ -47,10 +47,10 @@ namespace SnakeGame
             return TileState.Empty;
         }
 
-        public Matrix<double> GetVision()
+        public double[] GetVision()
         {
             if (_lastDirection == Point.Zero)
-                return Matrix<double>.Build.Dense(3, 7, 0.0);
+                return Enumerable.Repeat(0.0, 21).ToArray();
 
             Point forward = _lastDirection;
             Point left = new Point(forward.Y, -forward.X);
@@ -59,15 +59,14 @@ namespace SnakeGame
 
             // 3x8 matrix; each column encodes the data for a particular direction.
             // i.e. forward: m[0,0] = apple, m[1,0] = snake, m[2,0] = wall
-            return Matrix<double>.Build.Dense(3, 7,
-                Look(_currentPosition, forward)
+            return Look(_currentPosition, forward)
                 .Concat(Look(_currentPosition, forward + left))
                 .Concat(Look(_currentPosition, left))
                 .Concat(Look(_currentPosition, behind + left))
                 .Concat(Look(_currentPosition, forward + right))
                 .Concat(Look(_currentPosition, right))
                 .Concat(Look(_currentPosition, behind + right))
-                .ToArray());
+                .ToArray();
         }
 
         public bool IsInBounds(Point point)
