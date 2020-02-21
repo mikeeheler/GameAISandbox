@@ -512,6 +512,8 @@ namespace SnakeGame
                     _aiPlayers.Add(child);
                 }
 
+                // Shuffle the deck
+                _aiPlayers = _aiPlayers.OrderBy(_ => _rng.Next()).ToList();
                 foreach (var aiPlayer in _aiPlayers)
                     aiPlayer.Score = 0;
             }
