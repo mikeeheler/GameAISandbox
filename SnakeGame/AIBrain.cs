@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 
+using MathNet.Numerics.Distributions;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.Random;
 using Microsoft.Xna.Framework;
@@ -10,7 +11,7 @@ namespace SnakeGame
 {
     public class AIBrain
     {
-        private readonly RandomSource _random = SnakeRandom.Default;
+        private readonly RandomSource _rng = SnakeRandom.Default;
 
         private readonly int _inputSize;
         private readonly int _hiddenSize;
@@ -39,24 +40,13 @@ namespace SnakeGame
 
             BrainType = AIBrainType.OneOfGodsOwnPrototypes;
 
-            // TODO find a uniform distribution for Matrix<double>.Random that gives results -1 to 1
-            //      -- it'll probably be faster
-            _inputBias = Matrix<double>.Build.Dense(
-                1,
-                _hiddenSize,
-                (row, col) => _random.NextDouble() * 2.0 - 1.0);
-            _hiddenBias = Matrix<double>.Build.Dense(
-                1,
-                _outputSize,
-                (row, col) => _random.NextDouble() * 2.0 - 1.0);
-            _inputWeights = Matrix<double>.Build.Dense(
-                _inputSize,
-                _hiddenSize,
-                (row, col) => _random.NextDouble() * 2.0 - 1.0);
-            _hiddenWeights = Matrix<double>.Build.Dense(
-                _hiddenSize,
-                _outputSize,
-                (row, col) => _random.NextDouble() * 2.0 - 1.0);
+            var distribution = new Normal(0.0, 0.2);
+            // var distribution = new ContinuousUniform(-1.0, 1.0);
+            _inputBias = Matrix<double>.Build.Random(1, _hiddenSize, distribution);
+            _inputWeights = Matrix<double>.Build.Random(_inputSize, _hiddenSize, distribution);
+            _hiddenBias = Matrix<double>.Build.Random(1, _outputSize, distribution);
+            _hiddenWeights = Matrix<double>.Build.Random(_hiddenSize, _outputSize, distribution);
+            Compute(Enumerable.Repeat(0.0, inputSize).ToArray());
         }
 
         private AIBrain(AIBrain other)
@@ -71,9 +61,9 @@ namespace SnakeGame
             _hiddenBias = other._hiddenBias.Clone();
             _inputWeights = other._inputWeights.Clone();
             _hiddenWeights = other._hiddenWeights.Clone();
-            _inputValues = other._inputValues?.Clone();
-            _hiddenValues = other._hiddenValues?.Clone();
-            _outputValues = other._outputValues?.Clone();
+            _inputValues = other._inputValues.Clone();
+            _hiddenValues = other._hiddenValues.Clone();
+            _outputValues = other._outputValues.Clone();
         }
 
         private AIBrain(AIBrain left, AIBrain right, AIBreedingMode breedingMode)
@@ -128,7 +118,7 @@ namespace SnakeGame
         }
 
         public Matrix<double>[] GetValues()
-            => new[] { _inputValues?.Clone(), _hiddenValues?.Clone(), _outputValues?.Clone() };
+            => new[] { _inputValues.Clone(), _hiddenValues.Clone(), _outputValues.Clone() };
 
         public Matrix<double>[] GetWeights()
             => new[] { _inputWeights.Clone(), _hiddenWeights.Clone() };
@@ -138,7 +128,7 @@ namespace SnakeGame
 
         public void Mutate(double mutationRate)
         {
-            double randomRate = _random.NextDouble() * mutationRate;
+            double randomRate = _rng.NextDouble() * mutationRate;
             Matrix<double>[] mutateMatrices =
             {
                 _inputBias, _hiddenBias,
@@ -152,20 +142,20 @@ namespace SnakeGame
                 {
                     for (int col = 0; col < mutateMatrix.ColumnCount; ++col)
                     {
-                        if (_random.NextDouble() >= randomRate)
+                        if (_rng.NextDouble() >= randomRate)
                             continue;
 
-                        int method = _random.Next(4);
+                        int method = _rng.Next(4);
                         switch (method)
                         {
                             case 0: // tweak by up to ±0.2
-                                mutateMatrix[row, col] += _random.NextDouble() * 0.4 - 0.2;
+                                mutateMatrix[row, col] += _rng.NextDouble() * 0.4 - 0.2;
                                 break;
                             case 1: // replace with a new weight range -1.0 to 1.0
-                                mutateMatrix[row, col] = _random.NextDouble() * 2.0 - 1.0;
+                                mutateMatrix[row, col] = _rng.NextDouble() * 2.0 - 1.0;
                                 break;
                             case 2: // weaken or strengthen by up to 20%
-                                mutateMatrix[row, col] *= 1.0 + _random.NextDouble() * 0.4 - 0.2;
+                                mutateMatrix[row, col] *= 1.0 + _rng.NextDouble() * 0.4 - 0.2;
                                 break;
                             case 3: // negate
                                 mutateMatrix[row, col] *= -1;
@@ -187,7 +177,7 @@ namespace SnakeGame
             return Matrix<double>.Build.Dense(
                 left.RowCount,
                 left.ColumnCount,
-                (row, col) => _random.NextDouble() < 0.5 ? left[row,col] : right[row,col]);
+                (row, col) => _rng.NextDouble() < 0.5 ? left[row,col] : right[row,col]);
         }
 
         // Hyperbolic tangent function returns an S-shaped curve from -1 to 1 for inputs in the range -1 to 1
