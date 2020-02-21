@@ -14,7 +14,7 @@ to run on Windows. On Linux it fails to load libSDL and I CBF to figure out why.
 
 ## License
 
-All original code and images were created by [Mike Eheler](https://github.com/mikeeheler) and are licensed under the
+All original code and stuff were created by [Mike Eheler](https://github.com/mikeeheler) and are licensed under the
 [Beerware](https://spdx.org/licenses/Beerware.html) license (see [LICENSE](LICENSE)) with the following exceptions:
 
 * **Cascadia Mono** font from the [Cascadia Code](https://github.com/microsoft/cascadia-code/) project, used under the
