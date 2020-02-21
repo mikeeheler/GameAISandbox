@@ -34,6 +34,7 @@ namespace SnakeGame
         private readonly Color _inactiveNeuronColor;
         private readonly Color _snakeAliveColor;
         private readonly Color _snakeDeadColor;
+        private readonly List<Color> _snakeShades;
 
         private Vector2 _gameOverMessagePos;
         private Vector2 _quitMessagePos;
@@ -46,7 +47,8 @@ namespace SnakeGame
         private Texture2D _appleTexture;
         private Texture2D _arrowTexture;
         private Texture2D _smallSquareTexture;
-        private Texture2D _snakeCellTexture;
+        private Texture2D _snakeAliveTexture;
+        private Texture2D _snakeDeadTexture;
         private Texture2D _fieldTexture;
 
         private TimeSpan _lastTick;
@@ -98,6 +100,7 @@ namespace SnakeGame
             _inactiveNeuronColor = new Color(1.0f, 0.0f, 0.0f);
             _snakeAliveColor = new Color(0xff1c86ce);
             _snakeDeadColor = new Color(0xff1b1b99);
+            _snakeShades = new List<Color>(10);
 
             _tickEnabled = true;
             _ticks = 0;
@@ -120,11 +123,18 @@ namespace SnakeGame
 
             float fps = (float)(1000.0 / gameTime.ElapsedGameTime.TotalMilliseconds);
 
-            _spriteBatch.Begin(SpriteSortMode.Deferred, null, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+            _spriteBatch.Begin(
+                SpriteSortMode.Deferred,
+                null,
+                SamplerState.PointClamp,
+                DepthStencilState.None,
+                RasterizerState.CullNone);
+
             DrawField();
             DrawEntities();
             DrawUI(fps, gameTime.TotalGameTime.TotalMilliseconds);
             DrawDebug();
+
             _spriteBatch.End();
 
             base.Draw(gameTime);
@@ -147,8 +157,9 @@ namespace SnakeGame
 
             _appleTexture = Content.Load<Texture2D>("Textures/apple");
             _arrowTexture = Content.Load<Texture2D>("Textures/arrow");
-            _smallSquareTexture = CreateTexture(8, 8, Color.White);
-            _snakeCellTexture = Content.Load<Texture2D>("Textures/square");
+            _smallSquareTexture = CreateFlatTexture(8, 8, Color.White);
+            _snakeAliveTexture = CreateBorderSquare(16, 16, _snakeAliveColor, 2, Color.Black);
+            _snakeDeadTexture = CreateBorderSquare(16, 16, _snakeDeadColor, 2, new Color(0xff111111));
             _fieldTexture = CreateFieldTexture();
 
             OnResize(null, EventArgs.Empty);
@@ -199,10 +210,28 @@ namespace SnakeGame
             });
         }
 
+        private Texture2D CreateBorderSquare(int width, int height, Color color, int thickness, Color border)
+        {
+            Color[] image = new Color[width * height];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    if (x < thickness || y < thickness || x >= (width - thickness) || y >= (height - thickness))
+                        image[y * width + x] = border;
+                    else
+                        image[y * width + x] = color;
+                }
+            }
+            var result = new Texture2D(GraphicsDevice, width, height);
+            result.SetData(image);
+            return result;
+        }
+
         private Texture2D CreateFieldTexture()
         {
-            var tileDarkTexture = Content.Load<Texture2D>("Textures/tile-dark");
-            var tileLightTexture = Content.Load<Texture2D>("Textures/tile-light");
+            var tileDarkTexture = CreateBorderSquare(16, 16, new Color(0xff353535), 1, new Color(0xf1c1c1c));
+            var tileLightTexture = CreateBorderSquare(16, 16, new Color(0xff444444), 1, new Color(0xf1c1c1c));
 
             Debug.Assert(tileDarkTexture.Height == tileLightTexture.Height);
             Debug.Assert(tileDarkTexture.Width == tileLightTexture.Width);
@@ -247,7 +276,7 @@ namespace SnakeGame
             return result;
         }
 
-        private Texture2D CreateTexture(int width, int height, Color color)
+        private Texture2D CreateFlatTexture(int width, int height, Color color)
         {
             var result = new Texture2D(GraphicsDevice, width, height);
             result.SetData(Enumerable.Repeat(color, height*width).ToArray());
@@ -313,7 +342,6 @@ namespace SnakeGame
 
         private void DrawField()
         {
-            //_spriteBatch.Draw(_fieldTexture, _fieldTopLeft.ToVector2(), Color.White);
             _spriteBatch.Draw(_fieldTexture, _fieldTopLeft, null, Color.White, 0.0f, Vector2.Zero, 1.0f, SpriteEffects.None, 0.0f);
         }
 
@@ -323,18 +351,27 @@ namespace SnakeGame
                 _appleTexture,
                 _fieldTopLeft + (_gameState.ApplePosition * _appleTexture.Bounds.Size).ToVector2(),
                 Color.White);
-            Color squareColor = _gameState.Alive ? _snakeAliveColor : _snakeDeadColor;
+
+            if (_gameState.Snake.Count != _snakeShades.Count)
+            {
+                _snakeShades.Clear();
+                _snakeShades.Capacity = _gameState.Snake.Count;
+                for (int i = 0; i < _gameState.Snake.Count; i++)
+                {
+                    float ratio = Math.Clamp((float)i / _gameState.Snake.Count * 0.5f + 0.5f, 0.0f, 1.0f);
+                    _snakeShades.Add(new Color(ratio, ratio, ratio, 1.0f));
+                }
+            }
+
+            Texture2D snakeTexture = _gameState.Alive ? _snakeAliveTexture : _snakeDeadTexture;
+
             int pieceCount = 0;
             foreach (Point snakePiece in _gameState.Snake)
             {
-                double ratio = Math.Clamp((double)pieceCount / _gameState.Snake.Count * 0.5 + 0.5, 0.0, 1.0);
-                Color color = Color.Multiply(squareColor, (float)ratio);
-                color.A = 255;
                 _spriteBatch.Draw(
-                    _snakeCellTexture,
-                    _fieldTopLeft + (snakePiece * _snakeCellTexture.Bounds.Size).ToVector2(),
-                    color);
-                ++pieceCount;
+                    snakeTexture,
+                    (snakePiece * _snakeAliveTexture.Bounds.Size).ToVector2() + _fieldTopLeft,
+                    _snakeShades[pieceCount++]);
             }
         }
 

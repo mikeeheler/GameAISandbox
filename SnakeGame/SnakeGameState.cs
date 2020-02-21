@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
-using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.Random;
 using Microsoft.Xna.Framework;
 
@@ -79,7 +78,8 @@ namespace SnakeGame
         {
             Debug.Assert(IsLegalMove(move));
 
-            if (!(Alive && IsLegalMove(move)))
+            // Dead snakes don't move
+            if (!Alive)
                 return;
 
             Point direction = GetDirection(move);
@@ -104,6 +104,8 @@ namespace SnakeGame
                     break;
             }
 
+            // This is why we use a queue, so that the snake can grow to a target size each turn. A FIFO queue is
+            // perfect for that.
             _snake.Enqueue(newPosition);
             while (_snake.Count > SnakeSize)
                 _snake.Dequeue();
@@ -149,21 +151,22 @@ namespace SnakeGame
             int distance = 0;
             bool snakeFound = false;
 
-        lookAgain:
+        keepLooking:
 
             lookPos += direction;
             ++distance;
 
-            if (!IsInBounds(lookPos))
-            {
-                result[2] = Math.Sqrt(1.0 / distance);
-                return result;
-            }
-
             if (lookPos == _applePosition)
             {
                 result[0] = Math.Sqrt(1.0 / distance);
-                goto lookAgain;
+                goto keepLooking;
+            }
+
+            if (!IsInBounds(lookPos))
+            {
+                // Sqrt to flatten out the curve a bit
+                result[2] = Math.Sqrt(1.0 / distance);
+                return result;
             }
 
             // Only want distance to closest piece of snake, don't keep checking if it's found
@@ -173,7 +176,8 @@ namespace SnakeGame
                 snakeFound = true;
             }
 
-            goto lookAgain;
+            // Bite me
+            goto keepLooking;
         }
     }
 }
