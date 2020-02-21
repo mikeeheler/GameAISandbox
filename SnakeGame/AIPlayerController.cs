@@ -105,14 +105,14 @@ namespace SnakeGame
             // in this case just pick one.
             if (totalSum < 0.001)
             {
-                int index = MersenneTwister.Default.Next(moves.Length);
+                int index = SnakeRandom.Default.Next(moves.Length);
                 move = moves[index].Item2;
             }
             else
             {
                 // Select a move based on probability, i.e. if 0=0.1, 1=0.2, and 3=0.7 after normalization then
                 // 0-0.1 select move 0, 0.1-0.3 select move 1, and 0.3+ select move 2
-                double roll = MersenneTwister.Default.NextDouble() * totalSum;
+                double roll = SnakeRandom.Default.NextDouble() * totalSum;
                 double sum = 0.0;
                 int index = 0;
                 while (sum < roll && index < moves.Length)

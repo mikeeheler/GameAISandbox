@@ -85,7 +85,7 @@ namespace SnakeGame
                 PreferMultiSampling = true,
                 SynchronizeWithVerticalRetrace = true
             };
-            _rng = MersenneTwister.Default;
+            _rng = SnakeRandom.Default;
             _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
             _aiPlayerIndex = 0;
             _gamesPlayed = 0;

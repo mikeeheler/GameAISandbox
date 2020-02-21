@@ -10,7 +10,7 @@ namespace SnakeGame
 {
     public class AIBrain
     {
-        private readonly RandomSource _random = MersenneTwister.Default;
+        private readonly RandomSource _random = SnakeRandom.Default;
 
         private readonly int _inputSize;
         private readonly int _hiddenSize;

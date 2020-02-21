@@ -19,7 +19,7 @@ namespace SnakeGame
 
         public SnakeGameState()
         {
-            _rng = MersenneTwister.Default;
+            _rng = SnakeRandom.Default;
             _snake = new Queue<Point>();
             Reset();
         }
