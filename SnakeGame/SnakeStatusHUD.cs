@@ -6,56 +6,42 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace SnakeGame
 {
-    public class SnakeStatusHUD : DrawableGameComponent
+    public class SnakeStatusHUD
     {
         private const string GAME_OVER_MESSAGE = "GAME OVER";
         private const string QUIT_MESSAGE = "Q to quit";
         private const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
 
-        private readonly SnakeGame _snakeGame;
+        private readonly SnakeApp _snakeGame;
 
-        private SpriteBatch _spriteBatch;
         private SpriteFont _mainFont;
         private SpriteFont _smallFont;
+        private Rectangle _viewport;
 
         private Vector2 _gameOverMessagePos;
         private Vector2 _quitMessagePos;
         private Vector2 _tryAgainMessagePos;
 
-        public SnakeStatusHUD(SnakeGame game) : base(game)
+        public SnakeStatusHUD(SnakeApp game)
         {
             _snakeGame = game;
-            game.Window.ClientSizeChanged += OnResize;
         }
 
-        public override void Initialize()
+        public void Draw(SpriteBatch spriteBatch, SnakeGameSim gameSim, RenderStats renderStats)
         {
-            _spriteBatch = new SpriteBatch(GraphicsDevice);
-            DrawOrder = 1000;
+            spriteBatch.DrawString(_mainFont, QUIT_MESSAGE, _quitMessagePos, Color.LightGray);
 
-            base.Initialize();
-        }
+            double fps = Math.Round(renderStats.FramesPerSecond, 2);
 
-        public override void Draw(GameTime gameTime)
-        {
-            _spriteBatch.Begin(
-                SpriteSortMode.Deferred,
-                null,
-                SamplerState.PointClamp,
-                DepthStencilState.None,
-                RasterizerState.CullNone);
-
-            _spriteBatch.DrawString(_mainFont, QUIT_MESSAGE, _quitMessagePos, Color.LightGray);
-
-            string scoreMessage = $"size: {_snakeGame.ActiveGame.SnakeSize:N0}";
+            string scoreMessage = $"size: {gameSim.SnakeSize:N0}; fps: {fps:N0}";
             Point scoreMessageSize = _mainFont.MeasureString(scoreMessage).ToPoint();
-            Point scoreMessagePosition = Game.Window.ClientBounds.Size - scoreMessageSize;
-            _spriteBatch.DrawString(_mainFont, scoreMessage, scoreMessagePosition.ToVector2(), Color.LightGray);
+            Point scoreMessagePosition = _viewport.Size - scoreMessageSize;
+            spriteBatch.DrawString(_mainFont, scoreMessage, scoreMessagePosition.ToVector2(), Color.LightGray);
 
-            if (_snakeGame.ActivePlayer.IsHuman && !_snakeGame.ActiveGame.Alive)
+            if (_snakeGame.ActivePlayer.IsHuman && !gameSim.Alive)
             {
-                _spriteBatch.DrawString(_mainFont, GAME_OVER_MESSAGE, _gameOverMessagePos, Color.LightGoldenrodYellow);
-                _spriteBatch.DrawString(_mainFont, TRY_AGAIN_MESSAGE, _tryAgainMessagePos, Color.LightGoldenrodYellow);
+                spriteBatch.DrawString(_mainFont, GAME_OVER_MESSAGE, _gameOverMessagePos, Color.LightGoldenrodYellow);
+                spriteBatch.DrawString(_mainFont, TRY_AGAIN_MESSAGE, _tryAgainMessagePos, Color.LightGoldenrodYellow);
             }
 
             var stringBuilder = new StringBuilder()
@@ -75,21 +61,31 @@ namespace SnakeGame
                     .AppendLine(") ")
                 .Append("brain: ").Append(GetBrainTypeName(_snakeGame.ActivePlayer.BrainType));
 
-            _spriteBatch.DrawString(_mainFont, stringBuilder, Vector2.Zero, Color.LightGray);
-
-            _spriteBatch.End();
-
-            base.Draw(gameTime);
+            spriteBatch.DrawString(_mainFont, stringBuilder, Vector2.Zero, Color.LightGray);
         }
 
-        protected override void LoadContent()
+        public void Initialize(ISnakeGraphics graphics)
         {
-            _mainFont = Game.Content.Load<SpriteFont>("UIFont");
-            _smallFont = Game.Content.Load<SpriteFont>("UIFont-Small");
+            _mainFont = graphics.DefaultUIFont;
+            _smallFont = graphics.SmallUIFont;
+        }
 
-            OnResize(this, EventArgs.Empty);
+        public void OnWindowResize(Rectangle clientBounds)
+        {
+            _viewport = clientBounds;
 
-            base.LoadContent();
+            Vector2 gameOverMessageSize = _mainFont.MeasureString(GAME_OVER_MESSAGE);
+            _gameOverMessagePos = new Vector2(
+                (_viewport.Width - gameOverMessageSize.X) / 2,
+                (_viewport.Height / 2) - gameOverMessageSize.Y);
+
+            Vector2 quitMessageSize = _mainFont.MeasureString(QUIT_MESSAGE);
+            _quitMessagePos = new Vector2(0.0f, _viewport.Height - quitMessageSize.Y);
+
+            Vector2 tryAgainMessageSize = _mainFont.MeasureString(TRY_AGAIN_MESSAGE);
+            _tryAgainMessagePos = new Vector2(
+                (_viewport.Width - tryAgainMessageSize.X) / 2,
+                _viewport.Height / 2);
         }
 
         private static string GetBrainTypeName(AIBrainType brainType)
@@ -101,24 +97,5 @@ namespace SnakeGame
                 AIBrainType.OneOfGodsOwnPrototypes => "prototype",
                 _ => throw new ArgumentOutOfRangeException(nameof(brainType))
             };
-
-        private void OnResize(object sender, EventArgs e)
-        {
-            int windowHeight = Game.Window.ClientBounds.Height;
-            int windowWidth = Game.Window.ClientBounds.Width;
-
-            Vector2 gameOverMessageSize = _mainFont.MeasureString(GAME_OVER_MESSAGE);
-            _gameOverMessagePos = new Vector2(
-                (windowWidth - gameOverMessageSize.X) / 2,
-                (windowHeight / 2) - gameOverMessageSize.Y);
-
-            Vector2 quitMessageSize = _mainFont.MeasureString(QUIT_MESSAGE);
-            _quitMessagePos = new Vector2(0.0f, windowHeight - quitMessageSize.Y);
-
-            Vector2 tryAgainMessageSize = _mainFont.MeasureString(TRY_AGAIN_MESSAGE);
-            _tryAgainMessagePos = new Vector2(
-                (windowWidth - tryAgainMessageSize.X) / 2,
-                windowHeight / 2);
-        }
     }
 }

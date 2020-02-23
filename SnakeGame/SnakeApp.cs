@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Text;
 
 using MathNet.Numerics.Random;
 
@@ -12,7 +10,7 @@ using Microsoft.Xna.Framework.Input;
 
 namespace SnakeGame
 {
-    public class SnakeGame : Game
+    public class SnakeApp : Game
     {
         private const int GAMES_PER_GENERATION = 100;
         private const double MUTATION_RATE = 0.40;
@@ -34,9 +32,9 @@ namespace SnakeGame
         private bool _plusDown;
         private bool _minusDown;
 
-        public SnakeGame()
+        public SnakeApp()
         {
-            ActiveGame = new SnakeGameState();
+            ActiveGame = new SnakeGameSim();
             _graphicsDeviceManager = new GraphicsDeviceManager(this)
             {
                 PreferredBackBufferHeight = 720,
@@ -69,7 +67,7 @@ namespace SnakeGame
             Window.Title = "Snake Game AI Sandbox";
         }
 
-        public SnakeGameState ActiveGame { get; }
+        public SnakeGameSim ActiveGame { get; }
         public AIPlayerController ActivePlayer => _aiPlayers[AIPlayerIndex].Player;
         public int ActivePlayerScore => _aiPlayers[AIPlayerIndex].Score;
         public int AIPlayerIndex { get; private set; }
@@ -85,7 +83,7 @@ namespace SnakeGame
 
         protected override void Draw(GameTime gameTime)
         {
-            _renderer.RenderGame();
+            _renderer.RenderGame(gameTime);
             base.Draw(gameTime);
         }
 

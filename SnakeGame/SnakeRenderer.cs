@@ -20,7 +20,14 @@ namespace SnakeGame
         private readonly Color _snakeDeadColor;
         private readonly List<Color> _snakeShades;
 
-        private Rectangle _gameViewport;
+        private readonly SnakeStatusHUD _statusHUD;
+
+        private long _frameCount;
+        private long _lastFrameCount;
+        private TimeSpan _lastStatsUpdate;
+        private RenderStats _renderStats;
+
+        private Rectangle _fieldViewport;
         private SpriteBatch _spriteBatch;
 
         private Texture2D _fieldTexture;
@@ -30,7 +37,8 @@ namespace SnakeGame
         private Texture2D _snakeAliveTexture;
         private Texture2D _snakeDeadTexture;
 
-        public SnakeRenderer(SnakeGame game)
+
+        public SnakeRenderer(SnakeApp game)
         {
             _activeNeuronColor = new Color(0xff7fff7f);
             _backgroundColor = new Color(0xff101010);
@@ -40,30 +48,39 @@ namespace SnakeGame
             _snakeShades = new List<Color>(10);
 
             Game = game;
+
+            _statusHUD = new SnakeStatusHUD(game);
         }
 
-        public SnakeGame Game { get; }
+        public SnakeApp Game { get; }
         public GraphicsDevice GraphicsDevice => Game.GraphicsDevice;
 
         public void Initialize()
         {
-            _gameViewport = new Rectangle(0, 0, 0, 0);
+            _fieldViewport = new Rectangle(0, 0, 0, 0);
             _spriteBatch = new SpriteBatch(GraphicsDevice);
+
+            _frameCount = 0;
+            _lastFrameCount = 0;
+            _lastStatsUpdate = TimeSpan.Zero;
+            _renderStats = new RenderStats { FramesPerSecond = 0.0 };
 
             var graphics = Game.Services.GetService<ISnakeGraphics>();
             _fieldTexture = CreateFieldTexture(graphics);
-            _gameViewport.Size = _fieldTexture.Bounds.Size;
+            _fieldViewport.Size = _fieldTexture.Bounds.Size;
 
-            _appleTexture = Game.Content.Load<Texture2D>("Textures/apple");
-            _arrowTexture = Game.Content.Load<Texture2D>("Textures/arrow");
+            _appleTexture = graphics.AppleTexture;
+            _arrowTexture = graphics.ArrowTexture;
             _smallSquareTexture = graphics.CreateFlatTexture(8, 8, Color.White);
             _snakeAliveTexture = graphics.CreateBorderSquare(16, 16, _snakeAliveColor, 2, Color.Black);
             _snakeDeadTexture = graphics.CreateBorderSquare(16, 16, _snakeDeadColor, 2, new Color(0xff111111));
 
+            _statusHUD.Initialize(graphics);
+
             OnWindowResize(Game.Window.ClientBounds);
         }
 
-        public void RenderGame()
+        public void RenderGame(GameTime gameTime)
         {
             GraphicsDevice.Clear(_backgroundColor);
 
@@ -81,13 +98,17 @@ namespace SnakeGame
             DrawDebug();
 
             _spriteBatch.End();
+
+            TimeSpan timeSinceUpdate = gameTime.TotalGameTime - _lastStatsUpdate;
+            if (timeSinceUpdate.TotalSeconds >= 5.0)
+                UpdateRenderStats(gameTime.TotalGameTime);
         }
 
         public void OnWindowResize(Rectangle clientBounds)
         {
-            _gameViewport.Location = new Point(
-                (clientBounds.Size.X - _gameViewport.Size.X) / 2,
-                (clientBounds.Size.Y - _gameViewport.Size.Y) / 2);
+            _fieldViewport.Location = new Point(
+                (clientBounds.Size.X - _fieldViewport.Size.X) / 2,
+                (clientBounds.Size.Y - _fieldViewport.Size.Y) / 2);
         }
 
         private Texture2D CreateFieldTexture(ISnakeGraphics graphics)
@@ -195,7 +216,7 @@ namespace SnakeGame
         {
             _spriteBatch.Draw(
                 _fieldTexture,
-                _gameViewport.Location.ToVector2(), null,
+                _fieldViewport.Location.ToVector2(), null,
                 Color.White,
                 0.0f, Vector2.Zero, 1.0f,
                 SpriteEffects.None,
@@ -203,7 +224,7 @@ namespace SnakeGame
 
             _spriteBatch.Draw(
                 _appleTexture,
-                ((Game.ActiveGame.ApplePosition * _appleTexture.Bounds.Size) + _gameViewport.Location).ToVector2(),
+                ((Game.ActiveGame.ApplePosition * _appleTexture.Bounds.Size) + _fieldViewport.Location).ToVector2(),
                 Color.White);
 
             if (Game.ActiveGame.Snake.Count != _snakeShades.Count)
@@ -224,13 +245,14 @@ namespace SnakeGame
             {
                 _spriteBatch.Draw(
                     snakeTexture,
-                    (_gameViewport.Location + (snakePiece * _snakeAliveTexture.Bounds.Size)).ToVector2(),
+                    (_fieldViewport.Location + (snakePiece * _snakeAliveTexture.Bounds.Size)).ToVector2(),
                     _snakeShades[pieceCount++]);
             }
         }
 
         private void DrawHUD()
         {
+            _statusHUD.Draw(_spriteBatch, Game.ActiveGame, _renderStats);
         }
 
         private void DrawSmallSquare(Vector2 pos, float shade)
@@ -246,5 +268,23 @@ namespace SnakeGame
                 (shade >= 0 ? _activeNeuronColor : _inactiveNeuronColor) * Math.Abs(shade),
                 1.0f);
         }
+
+        private void UpdateRenderStats(TimeSpan gameTime)
+        {
+            long frameDiff = _frameCount - _lastFrameCount;
+            TimeSpan timeDiff = gameTime - _lastStatsUpdate;
+
+            _lastFrameCount = _frameCount;
+            _lastStatsUpdate = gameTime;
+            _renderStats = new RenderStats
+            {
+                FramesPerSecond = frameDiff / timeDiff.TotalSeconds
+            };
+        }
+    }
+
+    public struct RenderStats
+    {
+        public double FramesPerSecond;
     }
 }

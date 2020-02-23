@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 
 using Microsoft.Xna.Framework;
@@ -7,12 +8,26 @@ namespace SnakeGame
 {
     public class SnakeGraphics : ISnakeGraphics
     {
-        private readonly SnakeGame _game;
+        private readonly SnakeApp _game;
 
-        public SnakeGraphics(SnakeGame game)
+        private readonly Lazy<Texture2D> _appleTexture;
+        private readonly Lazy<Texture2D> _arrowTexture;
+        private readonly Lazy<SpriteFont> _defaultUIFont;
+        private readonly Lazy<SpriteFont> _smallUIFont;
+
+        public SnakeGraphics(SnakeApp game)
         {
             _game = game;
+            _appleTexture = new Lazy<Texture2D>(() => LoadTexture("Textures/apple"), false);
+            _arrowTexture = new Lazy<Texture2D>(() => LoadTexture("Textures/arrow"), false);
+            _defaultUIFont = new Lazy<SpriteFont>(() => LoadFont("UIFont"), false);
+            _smallUIFont = new Lazy<SpriteFont>(() => LoadFont("UIFont-Small"), false);
         }
+
+        public Texture2D AppleTexture => _appleTexture.Value;
+        public Texture2D ArrowTexture => _arrowTexture.Value;
+        public SpriteFont DefaultUIFont => _defaultUIFont.Value;
+        public SpriteFont SmallUIFont => _smallUIFont.Value;
 
         public Texture2D CreateBorderSquare(int width, int height, Color color, int thickness, Color border)
         {
@@ -39,5 +54,10 @@ namespace SnakeGame
             return result;
         }
 
+        public SpriteFont LoadFont(string resourceName)
+            => _game.Content.Load<SpriteFont>(resourceName);
+
+        public Texture2D LoadTexture(string resourceName)
+            => _game.Content.Load<Texture2D>(resourceName);
     }
 }

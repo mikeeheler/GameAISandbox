@@ -8,7 +8,7 @@ using Microsoft.Xna.Framework;
 
 namespace SnakeGame
 {
-    public class SnakeGameState
+    public class SnakeGameSim
     {
         private readonly RandomSource _rng;
         private readonly Queue<Point> _snake;
@@ -17,7 +17,7 @@ namespace SnakeGame
         private Point _currentPosition;
         private Point _lastDirection;
 
-        public SnakeGameState()
+        public SnakeGameSim()
         {
             _rng = SnakeRandom.Default;
             _snake = new Queue<Point>();

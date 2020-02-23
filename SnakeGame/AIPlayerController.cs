@@ -53,7 +53,7 @@ namespace SnakeGame
         public AIBrain CloneBrain()
             => _brain.Clone();
 
-        public PlayerMovement GetMovement(SnakeGameState gameState)
+        public PlayerMovement GetMovement(SnakeGameSim gameState)
             => GetNextMove(gameState);
 
         public void Initialize()
@@ -74,7 +74,7 @@ namespace SnakeGame
         {
         }
 
-        private PlayerMovement GetNextMove(SnakeGameState gameState)
+        private PlayerMovement GetNextMove(SnakeGameSim gameState)
         {
             double[] vision = gameState.GetVision();
             double[] computeValues = new double[1 + vision.Length];

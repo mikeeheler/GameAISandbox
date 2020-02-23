@@ -25,7 +25,7 @@ namespace SnakeGame
             _inputPollThread.Start();
         }
 
-        public PlayerMovement GetMovement(SnakeGameState snakeGameState)
+        public PlayerMovement GetMovement(SnakeGameSim snakeGameState)
         {
             lock (_inputSync)
             {

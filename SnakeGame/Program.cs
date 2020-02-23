@@ -7,7 +7,7 @@ namespace SnakeGame
         [STAThread]
         public static void Main()
         {
-            using var game = new SnakeGame();
+            using var game = new SnakeApp();
             game.Run();
         }
     }

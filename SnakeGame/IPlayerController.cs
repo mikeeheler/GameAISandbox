@@ -7,7 +7,7 @@ namespace SnakeGame
     {
         bool IsHuman { get; }
 
-        PlayerMovement GetMovement(SnakeGameState gameState);
+        PlayerMovement GetMovement(SnakeGameSim gameState);
         void Initialize();
         void Shutdown();
     }
