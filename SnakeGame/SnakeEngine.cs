@@ -5,18 +5,18 @@ using System.Linq;
 using MathNet.Numerics.Random;
 
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 
 namespace SnakeGame
 {
-    public class SnakeApp : Game
+    public class SnakeEngine : Game
     {
         private const int GAMES_PER_GENERATION = 100;
         private const double MUTATION_RATE = 0.40;
         private const int POPULATION_SIZE = 100;
 
         private readonly GraphicsDeviceManager _graphicsDeviceManager;
+        private readonly HashSet<Keys> _pressedKeys;
         private readonly RandomSource _rng;
 
         private ISnakeRenderer _renderer;
@@ -29,11 +29,7 @@ namespace SnakeGame
         private IPlayerController _player;
         private List<AIPlayerScore> _aiPlayers;
 
-        private bool _tabDown;
-        private bool _plusDown;
-        private bool _minusDown;
-
-        public SnakeApp()
+        public SnakeEngine()
         {
             _graphicsDeviceManager = new GraphicsDeviceManager(this)
             {
@@ -43,6 +39,7 @@ namespace SnakeGame
                 PreferMultiSampling = true,
                 SynchronizeWithVerticalRetrace = true
             };
+            _pressedKeys = new HashSet<Keys>(1024);
             _rng = SnakeRandom.Default;
             _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
             AIPlayerIndex = 0;
@@ -53,9 +50,6 @@ namespace SnakeGame
             AllTimeBestUnit = 0;
 
             _tickEnabled = true;
-            _tabDown = false;
-            _minusDown = false;
-            _plusDown = false;
 
             IsFixedTimeStep = false;
             IsMouseVisible = true;
@@ -64,6 +58,9 @@ namespace SnakeGame
             Window.AllowUserResizing = true;
             Window.ClientSizeChanged += OnResize;
             Window.Title = "Snake Game AI Sandbox";
+
+            KeyDown += HandleKeyDown;
+            KeyUp += HandleKeyUp;
         }
 
         public SnakeGameSim ActiveGame { get; private set; }
@@ -78,6 +75,9 @@ namespace SnakeGame
         public int ThisGenBestScore { get; private set; }
         public int ThisGenBestSpecies { get; private set; }
         public int ThisGenBestUnit { get; private set; }
+
+        public event EventHandler<KeyDownEventArgs> KeyDown;
+        public event EventHandler<KeyUpEventArgs> KeyUp;
 
         protected override void Draw(GameTime gameTime)
         {
@@ -97,8 +97,8 @@ namespace SnakeGame
                 SnakeGrowLength = 5,
                 SnakeStartLength = 10
             };
-            Services.AddService(_rules as ISnakeGameRules);
 
+            Services.AddService(_rules);
             Services.AddService(new SnakeGraphics(this) as ISnakeGraphics);
             Services.AddService(_renderer = new SnakeRenderer(this) as ISnakeRenderer);
 
@@ -114,7 +114,7 @@ namespace SnakeGame
 
         protected override void Update(GameTime gameTime)
         {
-            HandleKeyPress(Keyboard.GetState());
+            HandleKeyboardState(Keyboard.GetState());
 
             TimeSpan diff = gameTime.TotalGameTime - _lastTick;
             if (!_tickEnabled || diff.TotalSeconds >= _tickRate)
@@ -226,45 +226,58 @@ namespace SnakeGame
             }
         }
 
-        private void HandleKeyPress(KeyboardState keyboardState)
+        private void HandleKeyDown(object sender, KeyDownEventArgs e)
         {
-            if (keyboardState.IsKeyDown(Keys.Escape) || keyboardState.IsKeyDown(Keys.Q))
+            if (e.Key == Keys.Escape || e.Key == Keys.Q)
             {
                 Exit();
-                return;
             }
-
-            if (!ActiveGame.Alive && _player.IsHuman && keyboardState.IsKeyDown(Keys.Space))
+            else if (!ActiveGame.Alive && _player.IsHuman && e.Key == Keys.Space)
             {
                 Reset();
-                return;
             }
-
-            if (keyboardState.IsKeyDown(Keys.Tab))
-                _tabDown = true;
-            if (keyboardState.IsKeyDown(Keys.Subtract))
-                _minusDown = true;
-            if (keyboardState.IsKeyDown(Keys.Add))
-                _plusDown = true;
-
-            if (_tabDown && keyboardState.IsKeyUp(Keys.Tab))
+            else if (e.Key == Keys.Tab)
             {
                 _graphicsDeviceManager.SynchronizeWithVerticalRetrace = !_graphicsDeviceManager.SynchronizeWithVerticalRetrace;
                 _graphicsDeviceManager.ApplyChanges();
                 _tickEnabled = _graphicsDeviceManager.SynchronizeWithVerticalRetrace;
-                _tabDown = false;
             }
-
-            if (_minusDown && keyboardState.IsKeyUp(Keys.Subtract))
+            else if (e.Key == Keys.Subtract)
             {
                 _tickRate *= 2.0;
-                _minusDown = false;
             }
-
-            if (_plusDown && keyboardState.IsKeyUp(Keys.Add))
+            else if (e.Key == Keys.Add)
             {
                 _tickRate *= 0.5;
-                _plusDown = false;
+            }
+        }
+
+        private void HandleKeyUp(object sender, KeyUpEventArgs e)
+        {
+        }
+
+        private void HandleKeyboardState(KeyboardState keyboardState)
+        {
+            if (_pressedKeys.Count != 0)
+            {
+                var currentKeys = new HashSet<Keys>(_pressedKeys);
+                currentKeys.ExceptWith(new HashSet<Keys>(keyboardState.GetPressedKeys()));
+                foreach (Keys unpressedKey in currentKeys)
+                {
+                    _pressedKeys.Remove(unpressedKey);
+                    KeyUp?.Invoke(this, new KeyUpEventArgs(unpressedKey));
+                }
+            }
+
+            if (keyboardState.GetPressedKeyCount() > 0)
+            {
+                var pressedKeys = new HashSet<Keys>(keyboardState.GetPressedKeys());
+                pressedKeys.ExceptWith(_pressedKeys);
+                foreach (Keys pressedKey in pressedKeys)
+                {
+                    _pressedKeys.Add(pressedKey);
+                    KeyDown?.Invoke(this, new KeyDownEventArgs(pressedKey));
+                }
             }
         }
 

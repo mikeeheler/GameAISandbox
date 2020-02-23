@@ -20,7 +20,7 @@ namespace SnakeGame
         private readonly Color _snakeDeadColor;
         private readonly List<Color> _snakeShades;
 
-        private readonly SnakeApp _snakeApp;
+        private readonly SnakeEngine _snakeApp;
         private readonly SnakeStatusHUD _statusHUD;
 
         private long _frameCount;
@@ -38,7 +38,7 @@ namespace SnakeGame
         private Texture2D _snakeAliveTexture;
         private Texture2D _snakeDeadTexture;
 
-        public SnakeRenderer(SnakeApp snakeApp)
+        public SnakeRenderer(SnakeEngine snakeApp)
         {
             _activeNeuronColor = new Color(0xff7fff7f);
             _backgroundColor = new Color(0xff101010);

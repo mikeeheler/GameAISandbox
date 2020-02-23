@@ -12,7 +12,7 @@ namespace SnakeGame
         private const string QUIT_MESSAGE = "Q to quit";
         private const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
 
-        private readonly SnakeApp _snakeGame;
+        private readonly SnakeEngine _snakeGame;
 
         private SpriteFont _mainFont;
         private SpriteFont _smallFont;
@@ -22,7 +22,7 @@ namespace SnakeGame
         private Vector2 _quitMessagePos;
         private Vector2 _tryAgainMessagePos;
 
-        public SnakeStatusHUD(SnakeApp game)
+        public SnakeStatusHUD(SnakeEngine game)
         {
             _snakeGame = game;
         }

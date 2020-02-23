@@ -8,14 +8,14 @@ namespace SnakeGame
 {
     public class SnakeGraphics : ISnakeGraphics
     {
-        private readonly SnakeApp _game;
+        private readonly SnakeEngine _game;
 
         private readonly Lazy<Texture2D> _appleTexture;
         private readonly Lazy<Texture2D> _arrowTexture;
         private readonly Lazy<SpriteFont> _defaultUIFont;
         private readonly Lazy<SpriteFont> _smallUIFont;
 
-        public SnakeGraphics(SnakeApp game)
+        public SnakeGraphics(SnakeEngine game)
         {
             _game = game;
             _appleTexture = new Lazy<Texture2D>(() => LoadTexture("Textures/apple"), false);
