@@ -18,33 +18,14 @@ namespace SnakeGame
         private const double MUTATION_RATE = 0.40;
         private const int POPULATION_SIZE = 100;
 
-        private const double RAD90 = Math.PI * 0.5;
-        private const double RAD180 = Math.PI;
-
         private readonly GraphicsDeviceManager _graphicsDeviceManager;
         private readonly RandomSource _rng;
-
-        private readonly Color _activeNeuronColor;
-        private readonly Color _backgroundColor;
-        private readonly Color _inactiveNeuronColor;
-        private readonly Color _snakeAliveColor;
-        private readonly Color _snakeDeadColor;
-        private readonly List<Color> _snakeShades;
-
-        private SpriteBatch _spriteBatch;
-
-        private Texture2D _appleTexture;
-        private Texture2D _arrowTexture;
-        private Texture2D _smallSquareTexture;
-        private Texture2D _snakeAliveTexture;
-        private Texture2D _snakeDeadTexture;
-        private Texture2D _fieldTexture;
+        private readonly SnakeRenderer _renderer;
 
         private TimeSpan _lastTick;
         private bool _tickEnabled;
         private double _tickRate = 0.125;
 
-        private Vector2 _fieldTopLeft;
         private IPlayerController _player;
 
         private List<AIPlayerScore> _aiPlayers;
@@ -65,6 +46,7 @@ namespace SnakeGame
                 SynchronizeWithVerticalRetrace = true
             };
             _rng = SnakeRandom.Default;
+            _renderer = new SnakeRenderer(this);
             _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
             AIPlayerIndex = 0;
             GamesPlayed = 0;
@@ -72,14 +54,6 @@ namespace SnakeGame
             AllTimeBestScore = 0;
             AllTimeBestSpecies = 0;
             AllTimeBestUnit = 0;
-            _fieldTopLeft = Vector2.Zero;
-
-            _activeNeuronColor = new Color(0xff7fff7f);
-            _backgroundColor = new Color(0xff101010);
-            _inactiveNeuronColor = new Color(0xff0000ff);
-            _snakeAliveColor = new Color(0xff1c86ce);
-            _snakeDeadColor = new Color(0xff1b1b99);
-            _snakeShades = new List<Color>(10);
 
             _tickEnabled = true;
             _tabDown = false;
@@ -104,54 +78,27 @@ namespace SnakeGame
         public int AllTimeBestUnit { get; private set; }
         public int GamesPlayed { get; private set; }
         public int Generation { get; private set; }
+        public SpriteBatch SpriteBatch { get; private set; }
         public int ThisGenBestScore { get; private set; }
         public int ThisGenBestSpecies { get; private set; }
         public int ThisGenBestUnit { get; private set; }
 
         protected override void Draw(GameTime gameTime)
         {
-            GraphicsDevice.Clear(_backgroundColor);
-
-            _spriteBatch.Begin(
-                SpriteSortMode.Deferred,
-                null,
-                SamplerState.PointClamp,
-                DepthStencilState.None,
-                RasterizerState.CullNone);
-
-            DrawField();
-            DrawEntities();
-            DrawDebug();
-
-            _spriteBatch.End();
-
+            _renderer.RenderGame();
             base.Draw(gameTime);
         }
 
         protected override void Initialize()
         {
-            Components.Add(new SnakeStatusHUD(this));
+            Services.AddService(new SnakeGraphics(this) as ISnakeGraphics);
+
+            _renderer.Initialize();
 
             _lastTick = TimeSpan.Zero;
             Reset();
 
             base.Initialize();
-        }
-
-        protected override void LoadContent()
-        {
-            _spriteBatch = new SpriteBatch(GraphicsDevice);
-
-            _appleTexture = Content.Load<Texture2D>("Textures/apple");
-            _arrowTexture = Content.Load<Texture2D>("Textures/arrow");
-            _smallSquareTexture = CreateFlatTexture(8, 8, Color.White);
-            _snakeAliveTexture = CreateBorderSquare(16, 16, _snakeAliveColor, 2, Color.Black);
-            _snakeDeadTexture = CreateBorderSquare(16, 16, _snakeDeadColor, 2, new Color(0xff111111));
-            _fieldTexture = CreateFieldTexture();
-
-            OnResize(null, EventArgs.Empty);
-
-            base.LoadContent();
         }
 
         protected override void Update(GameTime gameTime)
@@ -183,171 +130,6 @@ namespace SnakeGame
             base.OnExiting(sender, args);
         }
 
-        private Texture2D CreateBorderSquare(int width, int height, Color color, int thickness, Color border)
-        {
-            Color[] image = new Color[width * height];
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    if (x < thickness || y < thickness || x >= (width - thickness) || y >= (height - thickness))
-                        image[(y * width) + x] = border;
-                    else
-                        image[(y * width) + x] = color;
-                }
-            }
-            var result = new Texture2D(GraphicsDevice, width, height);
-            result.SetData(image);
-            return result;
-        }
-
-        private Texture2D CreateFieldTexture()
-        {
-            var tileDarkTexture = CreateBorderSquare(16, 16, new Color(0xff353535), 1, new Color(0xf1c1c1c));
-            var tileLightTexture = CreateBorderSquare(16, 16, new Color(0xff444444), 1, new Color(0xf1c1c1c));
-
-            Debug.Assert(tileDarkTexture.Height == tileLightTexture.Height);
-            Debug.Assert(tileDarkTexture.Width == tileLightTexture.Width);
-
-            // Render the field to a single texture because drawing 400 sprites every frame is slow
-            using var renderTarget = new RenderTarget2D(
-                tileDarkTexture.GraphicsDevice,
-                SnakeRules.FIELD_WIDTH * tileDarkTexture.Width,
-                SnakeRules.FIELD_HEIGHT * tileDarkTexture.Height);
-            var result = new Texture2D(
-                tileDarkTexture.GraphicsDevice,
-                SnakeRules.FIELD_WIDTH * tileDarkTexture.Width,
-                SnakeRules.FIELD_HEIGHT * tileDarkTexture.Height);
-
-            GraphicsDevice.SetRenderTarget(renderTarget);
-            GraphicsDevice.Clear(Color.Black);
-
-            _spriteBatch.Begin();
-            Point tilePosition = Point.Zero;
-
-            for (tilePosition.Y = 0; tilePosition.Y < SnakeRules.FIELD_HEIGHT; ++tilePosition.Y)
-            {
-                for (tilePosition.X = 0; tilePosition.X < SnakeRules.FIELD_WIDTH; ++tilePosition.X)
-                {
-                    Texture2D cellTexture = (tilePosition.X + tilePosition.Y) % 2 == 0
-                        ? tileLightTexture
-                        : tileDarkTexture;
-                    _spriteBatch.Draw(
-                        cellTexture,
-                        (tilePosition * cellTexture.Bounds.Size).ToVector2(),
-                        Color.White);
-                }
-            }
-            _spriteBatch.End();
-
-            GraphicsDevice.SetRenderTarget(null);
-
-            Color[] fieldData = new Color[renderTarget.Width * renderTarget.Height];
-            renderTarget.GetData(fieldData);
-            result.SetData(fieldData);
-
-            return result;
-        }
-
-        private Texture2D CreateFlatTexture(int width, int height, Color color)
-        {
-            var result = new Texture2D(GraphicsDevice, width, height);
-            result.SetData(Enumerable.Repeat(color, height*width).ToArray());
-            return result;
-        }
-
-        private void DrawSmallSquare(Vector2 pos, float shade)
-        {
-            _spriteBatch.Draw(_smallSquareTexture, pos, GetDebugColor(shade));
-        }
-
-        private void DrawDebug()
-        {
-            DrawDebugOutputs();
-
-            var brain = _aiPlayers[AIPlayerIndex].Player.CloneBrain();
-            var values = brain.GetValues();
-
-            Vector2 topLeft = new Vector2(336, 310);
-            Vector2 offset = new Vector2(16, 0);
-            for (int layerIndex = 0; layerIndex < values.Length; ++layerIndex)
-            {
-                if (values[layerIndex] == null)
-                    continue;
-
-                double[] layer = values[layerIndex].Enumerate().ToArray();
-                Vector2 pos = new Vector2(layerIndex * offset.X, offset.Y);
-                for (int y = 0; y < layer.Length; ++y)
-                {
-                    pos.Y = y * 8;
-                    DrawSmallSquare(topLeft + pos, (float)layer[y]);
-                }
-            }
-        }
-
-        private void DrawDebugArrow(Vector2 position, Vector2 offset, Color color, float rotation)
-        {
-            _spriteBatch.Draw(
-                _arrowTexture,
-                position + offset,
-                null,
-                color,
-                rotation,
-                offset,
-                1.0f,
-                SpriteEffects.None,
-                0.0f);
-        }
-
-        private void DrawDebugOutputs()
-        {
-            Vector2 topLeft = new Vector2(400, 350);
-            Vector2 offset = new Vector2(16, 16);
-            var aiDecision = _aiPlayers[AIPlayerIndex].Player.Decision;
-            float up = aiDecision[0];
-            float left = aiDecision[1];
-            float right = aiDecision[2];
-
-            DrawDebugArrow(topLeft, offset, GetDebugColor(up), (float)RAD90);
-            DrawDebugArrow(topLeft + new Vector2(-16, 32), offset, GetDebugColor(left), 0.0f);
-            DrawDebugArrow(topLeft + new Vector2(16, 32), offset, GetDebugColor(right), (float)RAD180);
-        }
-
-        private void DrawField()
-        {
-            _spriteBatch.Draw(_fieldTexture, _fieldTopLeft, null, Color.White, 0.0f, Vector2.Zero, 1.0f, SpriteEffects.None, 0.0f);
-        }
-
-        private void DrawEntities()
-        {
-            _spriteBatch.Draw(
-                _appleTexture,
-                _fieldTopLeft + (ActiveGame.ApplePosition * _appleTexture.Bounds.Size).ToVector2(),
-                Color.White);
-
-            if (ActiveGame.Snake.Count != _snakeShades.Count)
-            {
-                _snakeShades.Clear();
-                _snakeShades.Capacity = ActiveGame.Snake.Count;
-                for (int i = 0; i < ActiveGame.Snake.Count; i++)
-                {
-                    float ratio = Math.Clamp(((float)i / ActiveGame.Snake.Count * 0.5f) + 0.5f, 0.0f, 1.0f);
-                    _snakeShades.Add(new Color(ratio, ratio, ratio, 1.0f));
-                }
-            }
-
-            Texture2D snakeTexture = ActiveGame.Alive ? _snakeAliveTexture : _snakeDeadTexture;
-
-            int pieceCount = 0;
-            foreach (Point snakePiece in ActiveGame.Snake)
-            {
-                _spriteBatch.Draw(
-                    snakeTexture,
-                    (snakePiece * _snakeAliveTexture.Bounds.Size).ToVector2() + _fieldTopLeft,
-                    _snakeShades[pieceCount++]);
-            }
-        }
-
         private IEnumerable<AIPlayerScore> GenerateAIPlayers(int size)
         {
             return Enumerable.Range(0, size).Select(_ =>
@@ -355,16 +137,6 @@ namespace SnakeGame
                 var player = new AIPlayerController();
                 return new AIPlayerScore { Player = player, Score = 0 };
             });
-        }
-
-        private Color GetDebugColor(float shade)
-        {
-            shade = Math.Clamp(shade, -1.0f, 1.0f);
-
-            Color shadeColor = new Color(
-                (shade >= 0 ? _activeNeuronColor : _inactiveNeuronColor) * Math.Abs(shade),
-                1.0f);
-            return shadeColor;
         }
 
         private void HandleAI()
@@ -487,8 +259,7 @@ namespace SnakeGame
 
         private void OnResize(object sender, EventArgs e)
         {
-            _fieldTopLeft.X = (Window.ClientBounds.Width - _fieldTexture.Width) / 2;
-            _fieldTopLeft.Y = (Window.ClientBounds.Height - _fieldTexture.Height) / 2;
+            _renderer.OnWindowResize(Window.ClientBounds);
         }
 
         private void Reset()

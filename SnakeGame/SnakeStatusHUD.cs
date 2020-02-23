@@ -58,16 +58,6 @@ namespace SnakeGame
                 _spriteBatch.DrawString(_mainFont, TRY_AGAIN_MESSAGE, _tryAgainMessagePos, Color.LightGoldenrodYellow);
             }
 
-            static string GetBrainTypeName(AIBrainType brainType)
-                => brainType switch
-                {
-                    AIBrainType.DescendentCoalesced => "coalesced",
-                    AIBrainType.DescendentMixed => "mixed",
-                    AIBrainType.MutatedClone => "mutant",
-                    AIBrainType.OneOfGodsOwnPrototypes => "prototype",
-                    _ => throw new ArgumentOutOfRangeException(nameof(brainType))
-                };
-
             var stringBuilder = new StringBuilder()
                 .Append("gen: ").AppendFormat("{0:N0}", _snakeGame.Generation).Append("; ")
                 .Append("idx: ").AppendFormat("{0:N0}", _snakeGame.AIPlayerIndex).Append("; ")
@@ -101,6 +91,16 @@ namespace SnakeGame
 
             base.LoadContent();
         }
+
+        private static string GetBrainTypeName(AIBrainType brainType)
+            => brainType switch
+            {
+                AIBrainType.DescendentCoalesced => "coalesced",
+                AIBrainType.DescendentMixed => "mixed",
+                AIBrainType.MutatedClone => "mutant",
+                AIBrainType.OneOfGodsOwnPrototypes => "prototype",
+                _ => throw new ArgumentOutOfRangeException(nameof(brainType))
+            };
 
         private void OnResize(object sender, EventArgs e)
         {
