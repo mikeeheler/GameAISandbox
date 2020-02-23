@@ -134,13 +134,6 @@ namespace SnakeGame
             base.Update(gameTime);
         }
 
-        protected override void OnExiting(object sender, EventArgs args)
-        {
-            _player.Shutdown();
-
-            base.OnExiting(sender, args);
-        }
-
         private IEnumerable<AIPlayerScore> GenerateAIPlayers(int size)
         {
             return Enumerable.Range(0, size).Select(_ =>
@@ -289,7 +282,7 @@ namespace SnakeGame
         private void Reset()
         {
             ActiveGame.Reset();
-            _player?.Shutdown();
+
             _player = _aiPlayers[AIPlayerIndex].Player;
             _player.Initialize();
         }

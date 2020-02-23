@@ -70,10 +70,6 @@ namespace SnakeGame
             _brain.Mutate(mutationRate);
         }
 
-        public void Shutdown()
-        {
-        }
-
         private PlayerMovement GetNextMove(SnakeGameSim gameState)
         {
             double[] vision = gameState.GetVision();

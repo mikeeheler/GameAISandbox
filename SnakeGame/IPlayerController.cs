@@ -1,6 +1,3 @@
-using System;
-using Microsoft.Xna.Framework;
-
 namespace SnakeGame
 {
     public interface IPlayerController
@@ -9,6 +6,5 @@ namespace SnakeGame
 
         PlayerMovement GetMovement(SnakeGameSim gameState);
         void Initialize();
-        void Shutdown();
     }
 }
