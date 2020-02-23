@@ -5,6 +5,7 @@ using System.Linq;
 using MathNet.Numerics.Distributions;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.Random;
+
 using Microsoft.Xna.Framework;
 
 namespace SnakeGame
@@ -145,8 +146,7 @@ namespace SnakeGame
                         if (_rng.NextDouble() >= randomRate)
                             continue;
 
-                        int method = _rng.Next(4);
-                        switch (method)
+                        switch (_rng.Next(4))
                         {
                             case 0: // tweak by up to ±0.2
                                 mutateMatrix[row, col] += (_rng.NextDouble() * 0.4) - 0.2;

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 using MathNet.Numerics.Random;
 
@@ -16,13 +17,17 @@ namespace SnakeGame
         private const int POPULATION_SIZE = 100;
 
         private readonly GraphicsDeviceManager _graphicsDeviceManager;
+        private readonly Thread _keyPollThread;
+        private readonly object _keySync;
         private readonly HashSet<Keys> _pressedKeys;
         private readonly RandomSource _rng;
 
         private ISnakeRenderer _renderer;
         private ISnakeGameRules _rules;
 
+        private bool _graphicsDirty;
         private TimeSpan _lastTick;
+        private bool _pollKeysEnabled;
         private bool _tickEnabled;
         private double _tickRate = 0.125;
 
@@ -39,8 +44,14 @@ namespace SnakeGame
                 PreferMultiSampling = true,
                 SynchronizeWithVerticalRetrace = true
             };
-            _pressedKeys = new HashSet<Keys>(1024);
+            _graphicsDirty = false;
             _rng = SnakeRandom.Default;
+
+            _keyPollThread = new Thread(new ThreadStart(PollKeys)) { IsBackground = true };
+            _keySync = new object();
+            _pollKeysEnabled = true;
+            _pressedKeys = new HashSet<Keys>(1024);
+
             _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
             AIPlayerIndex = 0;
             GamesPlayed = 0;
@@ -110,11 +121,24 @@ namespace SnakeGame
             Reset();
 
             OnResize(this, EventArgs.Empty);
+
+            _keyPollThread.Start();
+        }
+
+        protected override void OnExiting(object sender, EventArgs e)
+        {
+            _pollKeysEnabled = false;
+            _keyPollThread.Join();
+            base.OnExiting(sender, e);
         }
 
         protected override void Update(GameTime gameTime)
         {
-            HandleKeyboardState(Keyboard.GetState());
+            if (_graphicsDirty)
+            {
+                _graphicsDeviceManager.ApplyChanges();
+                _graphicsDirty = false;
+            }
 
             TimeSpan diff = gameTime.TotalGameTime - _lastTick;
             if (!_tickEnabled || diff.TotalSeconds >= _tickRate)
@@ -232,7 +256,7 @@ namespace SnakeGame
             else if (e.Key == Keys.Tab)
             {
                 _graphicsDeviceManager.SynchronizeWithVerticalRetrace = !_graphicsDeviceManager.SynchronizeWithVerticalRetrace;
-                _graphicsDeviceManager.ApplyChanges();
+                _graphicsDirty = true;
                 _tickEnabled = _graphicsDeviceManager.SynchronizeWithVerticalRetrace;
             }
             else if (e.Key == Keys.Subtract)
@@ -251,25 +275,28 @@ namespace SnakeGame
 
         private void HandleKeyboardState(KeyboardState keyboardState)
         {
-            if (_pressedKeys.Count != 0)
+            lock (_keySync)
             {
-                var currentKeys = new HashSet<Keys>(_pressedKeys);
-                currentKeys.ExceptWith(new HashSet<Keys>(keyboardState.GetPressedKeys()));
-                foreach (Keys unpressedKey in currentKeys)
+                if (_pressedKeys.Count != 0)
                 {
-                    _pressedKeys.Remove(unpressedKey);
-                    KeyUp?.Invoke(this, new KeyUpEventArgs(unpressedKey));
+                    var currentKeys = new HashSet<Keys>(_pressedKeys);
+                    currentKeys.ExceptWith(new HashSet<Keys>(keyboardState.GetPressedKeys()));
+                    foreach (Keys unpressedKey in currentKeys)
+                    {
+                        _pressedKeys.Remove(unpressedKey);
+                        KeyUp?.Invoke(this, new KeyUpEventArgs(unpressedKey));
+                    }
                 }
-            }
 
-            if (keyboardState.GetPressedKeyCount() > 0)
-            {
-                var pressedKeys = new HashSet<Keys>(keyboardState.GetPressedKeys());
-                pressedKeys.ExceptWith(_pressedKeys);
-                foreach (Keys pressedKey in pressedKeys)
+                if (keyboardState.GetPressedKeyCount() > 0)
                 {
-                    _pressedKeys.Add(pressedKey);
-                    KeyDown?.Invoke(this, new KeyDownEventArgs(pressedKey));
+                    var pressedKeys = new HashSet<Keys>(keyboardState.GetPressedKeys());
+                    pressedKeys.ExceptWith(_pressedKeys);
+                    foreach (Keys pressedKey in pressedKeys)
+                    {
+                        _pressedKeys.Add(pressedKey);
+                        KeyDown?.Invoke(this, new KeyDownEventArgs(pressedKey));
+                    }
                 }
             }
         }
@@ -277,6 +304,15 @@ namespace SnakeGame
         private void OnResize(object sender, EventArgs e)
         {
             _renderer.OnWindowResize(Window.ClientBounds);
+        }
+
+        private void PollKeys()
+        {
+            while (_pollKeysEnabled)
+            {
+                HandleKeyboardState(Keyboard.GetState());
+                Thread.Sleep(10);
+            }
         }
 
         private void Reset()
