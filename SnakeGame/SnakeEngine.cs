@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 
@@ -30,7 +31,7 @@ namespace SnakeGame
         private TimeSpan _lastTick;
         private bool _pollKeysEnabled;
         private bool _tickEnabled;
-        private double _tickRate = 0.125;
+        private double _tickRate;
 
         private IPlayerController _player;
         private List<AIPlayerScore> _aiPlayers;
@@ -58,10 +59,11 @@ namespace SnakeGame
             GamesPlayed = 0;
             Generation = 0;
             AllTimeBestScore = 0;
-            AllTimeBestSpecies = 0;
+            AllTimeBestSpecies = "";
             AllTimeBestUnit = 0;
 
             _tickEnabled = true;
+            _tickRate = 0.125;
 
             IsFixedTimeStep = false;
             IsMouseVisible = true;
@@ -76,20 +78,23 @@ namespace SnakeGame
         }
 
         public SnakeGameSim ActiveGame { get; private set; }
-        public AIPlayerController ActivePlayer => _aiPlayers[AIPlayerIndex].Player;
+        public AIPlayer ActivePlayer => _aiPlayers[AIPlayerIndex].Player;
         public int ActivePlayerScore => _aiPlayers[AIPlayerIndex].Score;
         public int AIPlayerIndex { get; private set; }
         public int AllTimeBestScore { get; private set; }
-        public int AllTimeBestSpecies { get; private set; }
+        public string AllTimeBestSpecies { get; private set; }
         public int AllTimeBestUnit { get; private set; }
         public int GamesPlayed { get; private set; }
         public int Generation { get; private set; }
         public int ThisGenBestScore { get; private set; }
-        public int ThisGenBestSpecies { get; private set; }
+        public string ThisGenBestSpecies { get; private set; }
         public int ThisGenBestUnit { get; private set; }
 
         public event EventHandler<KeyDownEventArgs> KeyDown;
         public event EventHandler<KeyUpEventArgs> KeyUp;
+
+        public SnakeGameSim CreateGame()
+            => new SnakeGameSim(_rules);
 
         protected override void Draw(GameTime gameTime)
         {
@@ -128,6 +133,7 @@ namespace SnakeGame
 
         protected override void OnExiting(object sender, EventArgs e)
         {
+            // Not strictly necessary since _keyPollThread is a background thread, but it is good practice to clean up
             _pollKeysEnabled = false;
             _keyPollThread.Join();
             base.OnExiting(sender, e);
@@ -160,7 +166,7 @@ namespace SnakeGame
         {
             return Enumerable.Range(0, size).Select(_ =>
             {
-                var player = new AIPlayerController();
+                var player = new AIPlayer();
                 return new AIPlayerScore { Player = player, Score = 0 };
             });
         }
@@ -175,7 +181,7 @@ namespace SnakeGame
             if (activePlayer.Score > ThisGenBestScore)
             {
                 ThisGenBestScore = activePlayer.Score;
-                ThisGenBestSpecies = (int)activePlayer.Player.SpeciesId;
+                ThisGenBestSpecies = activePlayer.Player.SpeciesName;
                 ThisGenBestUnit = (int)activePlayer.Player.Id;
             }
 
@@ -197,10 +203,25 @@ namespace SnakeGame
                 AIPlayerIndex = 0;
                 Generation++;
                 ThisGenBestScore = 0;
-                ThisGenBestSpecies = 0;
+                ThisGenBestSpecies = "";
                 ThisGenBestUnit = 0;
 
                 var sorted = _aiPlayers.OrderByDescending(x => x.Score).ToList();
+
+                var genPath = new DirectoryInfo(Path.Combine("Data", "gen" + Generation));
+                if (!genPath.Exists)
+                {
+                    genPath.Create();
+                    genPath.Refresh();
+                }
+
+                for (int i = 0; i < sorted.Count; ++i)
+                {
+                    var aiFile = new FileInfo(Path.Combine(genPath.FullName, "ai" + i + ".bin"));
+                    using var outputStream = File.Create(aiFile.FullName);
+                    sorted[i].Player.SerializeTo(outputStream);
+                }
+
                 _aiPlayers = new List<AIPlayerScore>() { Capacity = POPULATION_SIZE };
                 var parents = new List<AIPlayerScore>(sorted.Count);
                 long oddsSum = 0;
@@ -245,11 +266,11 @@ namespace SnakeGame
         {
             if (e.Key == Keys.Escape || e.Key == Keys.Q)
             {
-                Exit();
+                _mainThreadActions.Enqueue(Exit);
             }
             else if (!ActiveGame.Alive && _player.IsHuman && e.Key == Keys.Space)
             {
-                Reset();
+                _mainThreadActions.Enqueue(Reset);
             }
             else if (e.Key == Keys.Tab)
             {
@@ -262,11 +283,11 @@ namespace SnakeGame
             }
             else if (e.Key == Keys.Subtract)
             {
-                _tickRate *= 2.0;
+                _mainThreadActions.Enqueue(() => _tickRate *= 2.0);
             }
             else if (e.Key == Keys.Add)
             {
-                _tickRate *= 0.5;
+                _mainThreadActions.Enqueue(() => _tickRate *= 0.5);
             }
         }
 
@@ -333,7 +354,7 @@ namespace SnakeGame
 
         private class AIPlayerScore
         {
-            public AIPlayerController Player { get; set; }
+            public AIPlayer Player { get; set; }
             public int Score { get; set; }
         }
     }

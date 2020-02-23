@@ -1,6 +1,8 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Text;
 
 using MathNet.Numerics.Distributions;
 using MathNet.Numerics.LinearAlgebra;
@@ -13,10 +15,6 @@ namespace SnakeGame
     public class AIBrain
     {
         private readonly RandomSource _rng = SnakeRandom.Default;
-
-        private readonly int _inputSize;
-        private readonly int _hiddenSize;
-        private readonly int _outputSize;
 
         private readonly Matrix<double> _inputBias;
         private readonly Matrix<double> _hiddenBias;
@@ -33,9 +31,9 @@ namespace SnakeGame
             Debug.Assert(hiddenSize > 0);
             Debug.Assert(outputSize > 0);
 
-            _inputSize = inputSize;
-            _hiddenSize = hiddenSize;
-            _outputSize = outputSize;
+            InputSize = inputSize;
+            HiddenSize = hiddenSize;
+            OutputSize = outputSize;
             // mathnet indices: row,col
             // mathnet mem: col maj
 
@@ -43,10 +41,10 @@ namespace SnakeGame
 
             var distribution = new Normal(0.0, 0.2);
             // var distribution = new ContinuousUniform(-1.0, 1.0);
-            _inputBias = Matrix<double>.Build.Random(1, _hiddenSize, distribution);
-            _inputWeights = Matrix<double>.Build.Random(_inputSize, _hiddenSize, distribution);
-            _hiddenBias = Matrix<double>.Build.Random(1, _outputSize, distribution);
-            _hiddenWeights = Matrix<double>.Build.Random(_hiddenSize, _outputSize, distribution);
+            _inputBias = Matrix<double>.Build.Random(1, HiddenSize, distribution);
+            _inputWeights = Matrix<double>.Build.Random(InputSize, HiddenSize, distribution);
+            _hiddenBias = Matrix<double>.Build.Random(1, OutputSize, distribution);
+            _hiddenWeights = Matrix<double>.Build.Random(HiddenSize, OutputSize, distribution);
             Compute(Enumerable.Repeat(0.0, inputSize).ToArray());
         }
 
@@ -54,9 +52,9 @@ namespace SnakeGame
         {
             BrainType = AIBrainType.MutatedClone;
 
-            _inputSize = other._inputSize;
-            _hiddenSize = other._hiddenSize;
-            _outputSize = other._outputSize;
+            InputSize = other.InputSize;
+            HiddenSize = other.HiddenSize;
+            OutputSize = other.OutputSize;
 
             _inputBias = other._inputBias.Clone();
             _hiddenBias = other._hiddenBias.Clone();
@@ -69,13 +67,13 @@ namespace SnakeGame
 
         private AIBrain(AIBrain left, AIBrain right, AIBreedingMode breedingMode)
         {
-            Debug.Assert(left._inputSize == right._inputSize);
-            Debug.Assert(left._hiddenSize == right._hiddenSize);
-            Debug.Assert(left._outputSize == right._outputSize);
+            Debug.Assert(left.InputSize == right.InputSize);
+            Debug.Assert(left.HiddenSize == right.HiddenSize);
+            Debug.Assert(left.OutputSize == right.OutputSize);
 
-            _inputSize = left._inputSize;
-            _hiddenSize = left._hiddenSize;
-            _outputSize = left._outputSize;
+            InputSize = left.InputSize;
+            HiddenSize = left.HiddenSize;
+            OutputSize = left.OutputSize;
 
             switch (breedingMode)
             {
@@ -101,14 +99,29 @@ namespace SnakeGame
             }
         }
 
+        private AIBrain(Stream inputStream)
+        {
+            using var reader = new BinaryReader(inputStream, Encoding.UTF8, true);
+            BrainType = (AIBrainType)reader.ReadInt32();
+            InputSize = reader.ReadInt32();
+            HiddenSize = reader.ReadInt32();
+            OutputSize = reader.ReadInt32();
+        }
+
         public AIBrainType BrainType { get; }
+        public int InputSize { get; }
+        public int HiddenSize { get; }
+        public int OutputSize { get; }
+
+        public static AIBrain Deserialize(Stream inputStream)
+            => new AIBrain(inputStream);
 
         public AIBrain Clone()
             => new AIBrain(this);
 
         public float[] Compute(params double[] inputs)
         {
-            Debug.Assert(inputs.Length == _inputSize);
+            Debug.Assert(inputs.Length == InputSize);
 
             _inputValues = Matrix<double>.Build.DenseOfRowArrays(inputs);
 
@@ -166,6 +179,28 @@ namespace SnakeGame
                     }
                 }
             }
+        }
+
+        public void SerializeTo(Stream outputStream)
+        {
+            using var writer = new BinaryWriter(outputStream, Encoding.UTF8, true);
+            writer.Write((int)BrainType);
+            writer.Write(InputSize);
+            writer.Write(HiddenSize);
+            writer.Write(OutputSize);
+
+            double[] inputBias = _inputBias.AsColumnMajorArray();
+            double[] inputWeights = _inputWeights.AsColumnMajorArray();
+            double[] hiddenBias = _hiddenBias.AsColumnMajorArray();
+            double[] hiddenWeights = _hiddenWeights.AsColumnMajorArray();
+            for (int i = 0; i < inputBias.Length; i++)
+                writer.Write(inputBias[i]);
+            for (int i = 0; i < inputWeights.Length; i++)
+                writer.Write(inputWeights[i]);
+            for (int i = 0; i < hiddenBias.Length; i++)
+                writer.Write(hiddenBias[i]);
+            for (int i = 0; i < hiddenWeights.Length; i++)
+                writer.Write(hiddenWeights[i]);
         }
 
         // DNA shuffle. On average, 50% of the genes from the left and 50% of the genes from the right go into

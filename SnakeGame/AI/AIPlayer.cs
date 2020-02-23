@@ -1,13 +1,14 @@
 using System;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 
 using MathNet.Numerics.LinearAlgebra;
-using MathNet.Numerics.Random;
 
 namespace SnakeGame
 {
-    public class AIPlayerController : IPlayerController
+    public class AIPlayer : IPlayerController
     {
         private static long _globalId = 0;
 
@@ -15,38 +16,78 @@ namespace SnakeGame
         private bool _isInitialized;
         private PlayerMovement _lastMovement;
 
-        public AIPlayerController()
+        public AIPlayer()
         {
             Id = Interlocked.Increment(ref _globalId);
             _isInitialized = false;
             Decision = Vector<float>.Build.Dense(4, 0.0f);
+            IsHuman = false;
+            Name = Guid.NewGuid().ToString();
             _lastMovement = PlayerMovement.Right;
-            SpeciesId = Id;
+            SpeciesName = GenerateSpeciesName();
+        }
+
+        private AIPlayer(Stream inputStream)
+        {
+            using var reader = new BinaryReader(inputStream, Encoding.UTF8, true);
+
+            string nameKey = reader.ReadString();
+            if (nameKey != "name") throw new FormatException();
+            Name = reader.ReadString();
+
+            string speciesKey = reader.ReadString();
+            if (speciesKey != "species") throw new FormatException();
+            SpeciesName = reader.ReadString();
+
+            _brain = AIBrain.Deserialize(inputStream);
+
+            Id = Interlocked.Increment(ref _globalId);
+            _isInitialized = true;
+            Decision = Vector<float>.Build.Dense(4, 0.0f);
+            IsHuman = false;
+            _lastMovement = PlayerMovement.Right;
         }
 
         public AIBrainType BrainType => _brain.BrainType;
         public Vector<float> Decision { get; private set; }
         public long Id { get; }
-        public bool IsHuman { get; } = false;
-        public long SpeciesId { get; private set; }
+        public bool IsHuman { get; }
+        public string Name { get; set; }
+        public string SpeciesName { get; private set; }
 
-        public AIPlayerController Clone()
+        public static AIPlayer Deserialize(Stream inputStream)
+            => new AIPlayer(inputStream);
+
+        private static string GenerateSpeciesName()
         {
-            return new AIPlayerController
-            {
-                _brain = _brain.Clone(),
-                _isInitialized = true,
-                SpeciesId = SpeciesId
-            };
+            int[] charmap = Enumerable.Range(48, 10)
+                .Concat(Enumerable.Range(65, 26))
+                .Concat(Enumerable.Range(97, 26))
+                .ToArray();
+            byte[] name = Enumerable.Range(0, 8)
+                .Select(_ => charmap[SnakeRandom.Default.Next(charmap.Length)])
+                .Select(Convert.ToByte)
+                .ToArray();
+            return Encoding.ASCII.GetString(name);
         }
 
-        public AIPlayerController BreedWith(AIPlayerController consentingAdult, AIBreedingMode breedingMode)
+        public AIPlayer BreedWith(AIPlayer consentingAdult, AIBreedingMode breedingMode)
         {
-            return new AIPlayerController
+            return new AIPlayer
             {
                 _brain = _brain.MergeWith(consentingAdult._brain, breedingMode),
                 _isInitialized = true,
-                SpeciesId = SpeciesId
+                SpeciesName = SpeciesName
+            };
+        }
+
+        public AIPlayer Clone()
+        {
+            return new AIPlayer
+            {
+                _brain = _brain.Clone(),
+                _isInitialized = true,
+                SpeciesName = SpeciesName
             };
         }
 
@@ -68,6 +109,16 @@ namespace SnakeGame
         public void Mutate(double mutationRate)
         {
             _brain.Mutate(mutationRate);
+        }
+
+        public void SerializeTo(Stream outputStream)
+        {
+            using var writer = new BinaryWriter(outputStream, Encoding.UTF8, true);
+            writer.Write("name");
+            writer.Write(Name);
+            writer.Write("species");
+            writer.Write(SpeciesName);
+            _brain.SerializeTo(outputStream);
         }
 
         private PlayerMovement GetNextMove(SnakeGameSim instance)

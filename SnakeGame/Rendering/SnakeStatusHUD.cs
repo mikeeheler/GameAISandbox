@@ -48,7 +48,7 @@ namespace SnakeGame
                 .Append("gen: ").AppendFormat("{0:N0}", _engine.Generation).Append("; ")
                 .Append("idx: ").AppendFormat("{0:N0}", _engine.AIPlayerIndex).Append("; ")
                 .Append("id: ").AppendFormat("{0:N0}", _engine.ActivePlayer.Id).Append("; ")
-                .Append("species: ").AppendFormat("{0:N0}", _engine.ActivePlayer.SpeciesId).Append("; ")
+                .Append("species: ").AppendFormat("{0:N0}", _engine.ActivePlayer.SpeciesName).Append("; ")
                 .Append("games: ").AppendFormat("{0:N0}", _engine.GamesPlayed).AppendLine()
                 .Append("score: ").AppendFormat("{0:N0}", _engine.ActivePlayerScore).Append("; ")
                 .Append("this-gen: ").AppendFormat("{0:N0}", _engine.ThisGenBestScore)
