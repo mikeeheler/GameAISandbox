@@ -14,18 +14,13 @@ namespace SnakeGame
 {
     public class SnakeGame : Game
     {
-        const int GAMES_PER_GENERATION = 100;
-        const double MUTATION_RATE = 0.40;
-        const int POPULATION_SIZE = 100;
+        private const int GAMES_PER_GENERATION = 100;
+        private const double MUTATION_RATE = 0.40;
+        private const int POPULATION_SIZE = 100;
 
-        const double RAD90 = Math.PI * 0.5;
-        const double RAD180 = Math.PI;
+        private const double RAD90 = Math.PI * 0.5;
+        private const double RAD180 = Math.PI;
 
-        const string GAME_OVER_MESSAGE = "GAME OVER";
-        const string QUIT_MESSAGE = "Q to quit";
-        const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
-
-        private readonly SnakeGameState _gameState;
         private readonly GraphicsDeviceManager _graphicsDeviceManager;
         private readonly RandomSource _rng;
 
@@ -36,13 +31,7 @@ namespace SnakeGame
         private readonly Color _snakeDeadColor;
         private readonly List<Color> _snakeShades;
 
-        private Vector2 _gameOverMessagePos;
-        private Vector2 _quitMessagePos;
-        private Vector2 _tryAgainMessagePos;
-
         private SpriteBatch _spriteBatch;
-        private SpriteFont _uiFont;
-        private SpriteFont _uiFontSmall;
 
         private Texture2D _appleTexture;
         private Texture2D _arrowTexture;
@@ -52,7 +41,6 @@ namespace SnakeGame
         private Texture2D _fieldTexture;
 
         private TimeSpan _lastTick;
-        private int _ticks;
         private bool _tickEnabled;
         private double _tickRate = 0.125;
 
@@ -60,15 +48,6 @@ namespace SnakeGame
         private IPlayerController _player;
 
         private List<AIPlayerScore> _aiPlayers;
-        private int _aiPlayerIndex;
-        private int _gamesPlayed;
-        private int _generation;
-        private int _allTimeBestScore;
-        private int _allTimeBestSpecies;
-        private int _allTimeBestUnit;
-        private int _thisGenBestScore;
-        private int _thisGenBestSpecies;
-        private int _thisGenBestUnit;
 
         private bool _tabDown;
         private bool _plusDown;
@@ -76,7 +55,7 @@ namespace SnakeGame
 
         public SnakeGame()
         {
-            _gameState = new SnakeGameState();
+            ActiveGame = new SnakeGameState();
             _graphicsDeviceManager = new GraphicsDeviceManager(this)
             {
                 PreferredBackBufferHeight = 720,
@@ -87,23 +66,22 @@ namespace SnakeGame
             };
             _rng = SnakeRandom.Default;
             _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
-            _aiPlayerIndex = 0;
-            _gamesPlayed = 0;
-            _generation = 0;
-            _allTimeBestScore = 0;
-            _allTimeBestSpecies = 0;
-            _allTimeBestUnit = 0;
+            AIPlayerIndex = 0;
+            GamesPlayed = 0;
+            Generation = 0;
+            AllTimeBestScore = 0;
+            AllTimeBestSpecies = 0;
+            AllTimeBestUnit = 0;
             _fieldTopLeft = Vector2.Zero;
 
-            _activeNeuronColor = new Color(0.5f, 1.0f, 0.5f);
-            _backgroundColor = new Color(0.1f, 0.1f, 0.1f);
-            _inactiveNeuronColor = new Color(1.0f, 0.0f, 0.0f);
+            _activeNeuronColor = new Color(0xff7fff7f);
+            _backgroundColor = new Color(0xff101010);
+            _inactiveNeuronColor = new Color(0xff0000ff);
             _snakeAliveColor = new Color(0xff1c86ce);
             _snakeDeadColor = new Color(0xff1b1b99);
             _snakeShades = new List<Color>(10);
 
             _tickEnabled = true;
-            _ticks = 0;
             _tabDown = false;
             _minusDown = false;
             _plusDown = false;
@@ -117,11 +95,22 @@ namespace SnakeGame
             Window.Title = "Snake Game AI Sandbox";
         }
 
+        public SnakeGameState ActiveGame { get; }
+        public AIPlayerController ActivePlayer => _aiPlayers[AIPlayerIndex].Player;
+        public int ActivePlayerScore => _aiPlayers[AIPlayerIndex].Score;
+        public int AIPlayerIndex { get; private set; }
+        public int AllTimeBestScore { get; private set; }
+        public int AllTimeBestSpecies { get; private set; }
+        public int AllTimeBestUnit { get; private set; }
+        public int GamesPlayed { get; private set; }
+        public int Generation { get; private set; }
+        public int ThisGenBestScore { get; private set; }
+        public int ThisGenBestSpecies { get; private set; }
+        public int ThisGenBestUnit { get; private set; }
+
         protected override void Draw(GameTime gameTime)
         {
             GraphicsDevice.Clear(_backgroundColor);
-
-            float fps = (float)(1000.0 / gameTime.ElapsedGameTime.TotalMilliseconds);
 
             _spriteBatch.Begin(
                 SpriteSortMode.Deferred,
@@ -132,7 +121,6 @@ namespace SnakeGame
 
             DrawField();
             DrawEntities();
-            DrawUI(fps, gameTime.TotalGameTime.TotalMilliseconds);
             DrawDebug();
 
             _spriteBatch.End();
@@ -142,6 +130,8 @@ namespace SnakeGame
 
         protected override void Initialize()
         {
+            Components.Add(new SnakeGameHUD(this));
+
             _lastTick = TimeSpan.Zero;
             Reset();
 
@@ -151,9 +141,6 @@ namespace SnakeGame
         protected override void LoadContent()
         {
             _spriteBatch = new SpriteBatch(GraphicsDevice);
-
-            _uiFont = Content.Load<SpriteFont>("UIFont");
-            _uiFontSmall = Content.Load<SpriteFont>("UIFont-Small");
 
             _appleTexture = Content.Load<Texture2D>("Textures/apple");
             _arrowTexture = Content.Load<Texture2D>("Textures/arrow");
@@ -169,8 +156,6 @@ namespace SnakeGame
 
         protected override void Update(GameTime gameTime)
         {
-            _ticks++;
-
             HandleKeyPress(Keyboard.GetState());
 
             TimeSpan diff = gameTime.TotalGameTime - _lastTick;
@@ -179,7 +164,7 @@ namespace SnakeGame
                 UpdateEntities(diff);
 
                 if (!_player.IsHuman
-                    && (!_gameState.Alive || _gameState.TotalTurns == SnakeRules.MAX_AI_TURNS))
+                    && (!ActiveGame.Alive || ActiveGame.TotalTurns == SnakeRules.MAX_AI_TURNS))
                 {
                     HandleAI();
                     Reset();
@@ -194,20 +179,8 @@ namespace SnakeGame
         protected override void OnExiting(object sender, EventArgs args)
         {
             _player.Shutdown();
-            base.OnExiting(sender, args);
-        }
 
-        private IEnumerable<AIPlayerScore> Breed(
-            AIPlayerScore firstParent,
-            AIPlayerScore secondParent,
-            int count,
-            AIBreedingMode breedingMode)
-        {
-            return Enumerable.Range(0, count).Select(_ =>
-            {
-                var baby = firstParent.Player.BreedWith(secondParent.Player, breedingMode);
-                return new AIPlayerScore { Player = baby, Score = 0 };
-            });
+            base.OnExiting(sender, args);
         }
 
         private Texture2D CreateBorderSquare(int width, int height, Color color, int thickness, Color border)
@@ -218,9 +191,9 @@ namespace SnakeGame
                 for (int x = 0; x < width; x++)
                 {
                     if (x < thickness || y < thickness || x >= (width - thickness) || y >= (height - thickness))
-                        image[y * width + x] = border;
+                        image[(y * width) + x] = border;
                     else
-                        image[y * width + x] = color;
+                        image[(y * width) + x] = color;
                 }
             }
             var result = new Texture2D(GraphicsDevice, width, height);
@@ -292,7 +265,7 @@ namespace SnakeGame
         {
             DrawDebugOutputs();
 
-            var brain = _aiPlayers[_aiPlayerIndex].Player.CloneBrain();
+            var brain = _aiPlayers[AIPlayerIndex].Player.CloneBrain();
             var values = brain.GetValues();
 
             Vector2 topLeft = new Vector2(336, 310);
@@ -306,7 +279,7 @@ namespace SnakeGame
                 Vector2 pos = new Vector2(layerIndex * offset.X, offset.Y);
                 for (int y = 0; y < layer.Length; ++y)
                 {
-                    pos.Y = y * 8;;
+                    pos.Y = y * 8;
                     DrawSmallSquare(topLeft + pos, (float)layer[y]);
                 }
             }
@@ -330,7 +303,7 @@ namespace SnakeGame
         {
             Vector2 topLeft = new Vector2(400, 350);
             Vector2 offset = new Vector2(16, 16);
-            var aiDecision = _aiPlayers[_aiPlayerIndex].Player.Decision;
+            var aiDecision = _aiPlayers[AIPlayerIndex].Player.Decision;
             float up = aiDecision[0];
             float left = aiDecision[1];
             float right = aiDecision[2];
@@ -349,79 +322,30 @@ namespace SnakeGame
         {
             _spriteBatch.Draw(
                 _appleTexture,
-                _fieldTopLeft + (_gameState.ApplePosition * _appleTexture.Bounds.Size).ToVector2(),
+                _fieldTopLeft + (ActiveGame.ApplePosition * _appleTexture.Bounds.Size).ToVector2(),
                 Color.White);
 
-            if (_gameState.Snake.Count != _snakeShades.Count)
+            if (ActiveGame.Snake.Count != _snakeShades.Count)
             {
                 _snakeShades.Clear();
-                _snakeShades.Capacity = _gameState.Snake.Count;
-                for (int i = 0; i < _gameState.Snake.Count; i++)
+                _snakeShades.Capacity = ActiveGame.Snake.Count;
+                for (int i = 0; i < ActiveGame.Snake.Count; i++)
                 {
-                    float ratio = Math.Clamp((float)i / _gameState.Snake.Count * 0.5f + 0.5f, 0.0f, 1.0f);
+                    float ratio = Math.Clamp(((float)i / ActiveGame.Snake.Count * 0.5f) + 0.5f, 0.0f, 1.0f);
                     _snakeShades.Add(new Color(ratio, ratio, ratio, 1.0f));
                 }
             }
 
-            Texture2D snakeTexture = _gameState.Alive ? _snakeAliveTexture : _snakeDeadTexture;
+            Texture2D snakeTexture = ActiveGame.Alive ? _snakeAliveTexture : _snakeDeadTexture;
 
             int pieceCount = 0;
-            foreach (Point snakePiece in _gameState.Snake)
+            foreach (Point snakePiece in ActiveGame.Snake)
             {
                 _spriteBatch.Draw(
                     snakeTexture,
                     (snakePiece * _snakeAliveTexture.Bounds.Size).ToVector2() + _fieldTopLeft,
                     _snakeShades[pieceCount++]);
             }
-        }
-
-        private void DrawUI(double fps, double gameTime)
-        {
-            _spriteBatch.DrawString(_uiFont, QUIT_MESSAGE, _quitMessagePos, Color.LightGray);
-
-            string scoreMessage = $"size: {_gameState.SnakeSize:N0}; fps: {fps:N0}; tavg: {gameTime/_ticks:N2}";
-            Point scoreMessageSize = _uiFont.MeasureString(scoreMessage).ToPoint();
-            Point scoreMessagePosition = Window.ClientBounds.Size - scoreMessageSize;
-            _spriteBatch.DrawString(_uiFont, scoreMessage, scoreMessagePosition.ToVector2(), Color.LightGray);
-
-            if (!_gameState.Alive)
-            {
-                _spriteBatch.DrawString(_uiFont, GAME_OVER_MESSAGE, _gameOverMessagePos, Color.LightGoldenrodYellow);
-                _spriteBatch.DrawString(_uiFont, TRY_AGAIN_MESSAGE, _tryAgainMessagePos, Color.LightGoldenrodYellow);
-            }
-
-            static string GetBrainTypeName(AIBrainType brainType)
-                => brainType switch
-                {
-                    AIBrainType.DescendentCoalesced => "coalesced",
-                    AIBrainType.DescendentMixed => "mixed",
-                    AIBrainType.MutatedClone => "mutant",
-                    AIBrainType.OneOfGodsOwnPrototypes => "prototype",
-                    _ => throw new ArgumentOutOfRangeException(nameof(brainType))
-                };
-
-            var stringBuilder = new StringBuilder()
-                .Append($"gen: {_generation:N0}; ")
-                .Append($"idx: {_aiPlayerIndex:N0}; ")
-                .Append($"id: {_aiPlayers[_aiPlayerIndex].Player.Id:N0}; ")
-                .Append($"species: {_aiPlayers[_aiPlayerIndex].Player.SpeciesId:N0}; ")
-                .AppendLine($"games: {_gamesPlayed:N0}")
-                .Append($"score: {_aiPlayers[_aiPlayerIndex].Score:N0}; ")
-                .Append($"this-gen: {_thisGenBestScore:N0} ({_thisGenBestUnit}/{_thisGenBestSpecies}); ")
-                .AppendLine($"all-time: {_allTimeBestScore:N0} ({_allTimeBestUnit}/{_allTimeBestSpecies}) ")
-                .Append($"brain: {GetBrainTypeName(_aiPlayers[_aiPlayerIndex].Player.BrainType)}");
-
-            _spriteBatch.DrawString(_uiFont, stringBuilder, Vector2.Zero, Color.LightGray);
-        }
-
-        private IEnumerable<AIPlayerScore> Evolve(AIPlayerScore input, int count)
-        {
-            return Enumerable.Range(0, count).Select(_ =>
-            {
-                var newPlayer = input.Player.Clone();
-                newPlayer.Mutate(MUTATION_RATE);
-                return new AIPlayerScore { Player = newPlayer, Score = 0 };
-            });
         }
 
         private IEnumerable<AIPlayerScore> GenerateAIPlayers(int size)
@@ -445,38 +369,38 @@ namespace SnakeGame
 
         private void HandleAI()
         {
-            var activePlayer = _aiPlayers[_aiPlayerIndex];
+            var activePlayer = _aiPlayers[AIPlayerIndex];
 
-            activePlayer.Score += _gameState.ApplesEaten;
-            _gamesPlayed++;
+            activePlayer.Score += ActiveGame.ApplesEaten;
+            GamesPlayed++;
 
-            if (activePlayer.Score > _thisGenBestScore)
+            if (activePlayer.Score > ThisGenBestScore)
             {
-                _thisGenBestScore = activePlayer.Score;
-                _thisGenBestSpecies = (int)activePlayer.Player.SpeciesId;
-                _thisGenBestUnit = (int)activePlayer.Player.Id;
+                ThisGenBestScore = activePlayer.Score;
+                ThisGenBestSpecies = (int)activePlayer.Player.SpeciesId;
+                ThisGenBestUnit = (int)activePlayer.Player.Id;
             }
 
-            if (_thisGenBestScore > _allTimeBestScore)
+            if (ThisGenBestScore > AllTimeBestScore)
             {
-                _allTimeBestScore = _thisGenBestScore;
-                _allTimeBestSpecies = _thisGenBestSpecies;
-                _allTimeBestUnit = _thisGenBestUnit;
+                AllTimeBestScore = ThisGenBestScore;
+                AllTimeBestSpecies = ThisGenBestSpecies;
+                AllTimeBestUnit = ThisGenBestUnit;
             }
 
-            if (_gamesPlayed < GAMES_PER_GENERATION)
+            if (GamesPlayed < GAMES_PER_GENERATION)
                 return;
 
-            _aiPlayerIndex++;
-            _gamesPlayed = 0;
+            AIPlayerIndex++;
+            GamesPlayed = 0;
 
-            if (_aiPlayerIndex == POPULATION_SIZE)
+            if (AIPlayerIndex == POPULATION_SIZE)
             {
-                _aiPlayerIndex = 0;
-                _generation++;
-                _thisGenBestScore = 0;
-                _thisGenBestSpecies = 0;
-                _thisGenBestUnit = 0;
+                AIPlayerIndex = 0;
+                Generation++;
+                ThisGenBestScore = 0;
+                ThisGenBestSpecies = 0;
+                ThisGenBestUnit = 0;
 
                 var sorted = _aiPlayers.OrderByDescending(x => x.Score).ToList();
                 _aiPlayers = new List<AIPlayerScore>() { Capacity = POPULATION_SIZE };
@@ -527,7 +451,7 @@ namespace SnakeGame
                 return;
             }
 
-            if (!_gameState.Alive && _player.IsHuman && keyboardState.IsKeyDown(Keys.Space))
+            if (!ActiveGame.Alive && _player.IsHuman && keyboardState.IsKeyDown(Keys.Space))
             {
                 Reset();
                 return;
@@ -563,40 +487,21 @@ namespace SnakeGame
 
         private void OnResize(object sender, EventArgs e)
         {
-            int windowHeight = Window.ClientBounds.Height;
-            int windowWidth = Window.ClientBounds.Width;
-
-            int fieldHeight = _fieldTexture.Height;
-            int fieldWidth = _fieldTexture.Width;
-
-            _fieldTopLeft.X = (windowWidth - fieldWidth) / 2;
-            _fieldTopLeft.Y = (windowHeight - fieldHeight) / 2;
-
-            Vector2 gameOverMessageSize = _uiFont.MeasureString(GAME_OVER_MESSAGE);
-            _gameOverMessagePos = new Vector2(
-                (windowWidth - gameOverMessageSize.X) / 2,
-                windowHeight / 2 - gameOverMessageSize.Y);
-
-            Vector2 quitMessageSize = _uiFont.MeasureString(QUIT_MESSAGE);
-            _quitMessagePos = new Vector2(0.0f, windowHeight - quitMessageSize.Y);
-
-            Vector2 tryAgainMessageSize = _uiFont.MeasureString(TRY_AGAIN_MESSAGE);
-            _tryAgainMessagePos = new Vector2(
-                (windowWidth - tryAgainMessageSize.X) / 2,
-                windowHeight / 2);
+            _fieldTopLeft.X = (Window.ClientBounds.Width - _fieldTexture.Width) / 2;
+            _fieldTopLeft.Y = (Window.ClientBounds.Height - _fieldTexture.Height) / 2;
         }
 
         private void Reset()
         {
-            _gameState.Reset();
+            ActiveGame.Reset();
             _player?.Shutdown();
-            _player = _aiPlayers[_aiPlayerIndex].Player;
+            _player = _aiPlayers[AIPlayerIndex].Player;
             _player.Initialize();
         }
 
         private void UpdateEntities(TimeSpan _)
         {
-            _gameState.Move(_player.GetMovement(_gameState));
+            ActiveGame.Move(_player.GetMovement(ActiveGame));
         }
 
         private class AIPlayerScore

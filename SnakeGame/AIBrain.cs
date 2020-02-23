@@ -81,10 +81,10 @@ namespace SnakeGame
                 // Half of both parents genes are present in every one of the child's genes
                 case AIBreedingMode.Coalesce:
                     BrainType = AIBrainType.DescendentCoalesced;
-                    _inputBias = left._inputBias * 0.5 + right._inputBias * 0.5;
-                    _hiddenBias = left._hiddenBias * 0.5 + right._hiddenBias * 0.5;
-                    _inputWeights = left._inputWeights * 0.5 + right._inputWeights * 0.5;
-                    _hiddenWeights = left._hiddenWeights * 0.5 + right._hiddenWeights * 0.5;
+                    _inputBias = (left._inputBias * 0.5) + (right._inputBias * 0.5);
+                    _hiddenBias = (left._hiddenBias * 0.5) + (right._hiddenBias * 0.5);
+                    _inputWeights = (left._inputWeights * 0.5) + (right._inputWeights * 0.5);
+                    _hiddenWeights = (left._hiddenWeights * 0.5) + (right._hiddenWeights * 0.5);
                     break;
 
                 // Half of parent 1's genes and half of parent 2's genes
@@ -111,8 +111,8 @@ namespace SnakeGame
 
             _inputValues = Matrix<double>.Build.DenseOfRowArrays(inputs);
 
-            _hiddenValues = LeakyReLU(_inputValues * _inputWeights + _inputBias);
-            _outputValues = LeakyReLU(_hiddenValues * _hiddenWeights + _hiddenBias);
+            _hiddenValues = LeakyReLU((_inputValues * _inputWeights) + _inputBias);
+            _outputValues = LeakyReLU((_hiddenValues * _hiddenWeights) + _hiddenBias);
 
             return _outputValues.ToColumnMajorArray().Select(i => (float)i).ToArray();
         }
@@ -149,13 +149,13 @@ namespace SnakeGame
                         switch (method)
                         {
                             case 0: // tweak by up to ±0.2
-                                mutateMatrix[row, col] += _rng.NextDouble() * 0.4 - 0.2;
+                                mutateMatrix[row, col] += (_rng.NextDouble() * 0.4) - 0.2;
                                 break;
                             case 1: // replace with a new weight range -1.0 to 1.0
-                                mutateMatrix[row, col] = _rng.NextDouble() * 2.0 - 1.0;
+                                mutateMatrix[row, col] = (_rng.NextDouble() * 2.0) - 1.0;
                                 break;
                             case 2: // weaken or strengthen by up to 20%
-                                mutateMatrix[row, col] *= 1.0 + _rng.NextDouble() * 0.4 - 0.2;
+                                mutateMatrix[row, col] *= 1.0 + (_rng.NextDouble() * 0.4) - 0.2;
                                 break;
                             case 3: // negate
                                 mutateMatrix[row, col] *= -1;
