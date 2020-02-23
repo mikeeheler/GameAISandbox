@@ -18,14 +18,15 @@ namespace SnakeGame
 
         private readonly GraphicsDeviceManager _graphicsDeviceManager;
         private readonly RandomSource _rng;
-        private readonly SnakeRenderer _renderer;
+
+        private ISnakeRenderer _renderer;
+        private ISnakeGameRules _rules;
 
         private TimeSpan _lastTick;
         private bool _tickEnabled;
         private double _tickRate = 0.125;
 
         private IPlayerController _player;
-
         private List<AIPlayerScore> _aiPlayers;
 
         private bool _tabDown;
@@ -34,7 +35,6 @@ namespace SnakeGame
 
         public SnakeApp()
         {
-            ActiveGame = new SnakeGameSim();
             _graphicsDeviceManager = new GraphicsDeviceManager(this)
             {
                 PreferredBackBufferHeight = 720,
@@ -44,7 +44,6 @@ namespace SnakeGame
                 SynchronizeWithVerticalRetrace = true
             };
             _rng = SnakeRandom.Default;
-            _renderer = new SnakeRenderer(this);
             _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
             AIPlayerIndex = 0;
             GamesPlayed = 0;
@@ -67,7 +66,7 @@ namespace SnakeGame
             Window.Title = "Snake Game AI Sandbox";
         }
 
-        public SnakeGameSim ActiveGame { get; }
+        public SnakeGameSim ActiveGame { get; private set; }
         public AIPlayerController ActivePlayer => _aiPlayers[AIPlayerIndex].Player;
         public int ActivePlayerScore => _aiPlayers[AIPlayerIndex].Score;
         public int AIPlayerIndex { get; private set; }
@@ -76,27 +75,41 @@ namespace SnakeGame
         public int AllTimeBestUnit { get; private set; }
         public int GamesPlayed { get; private set; }
         public int Generation { get; private set; }
-        public SpriteBatch SpriteBatch { get; private set; }
         public int ThisGenBestScore { get; private set; }
         public int ThisGenBestSpecies { get; private set; }
         public int ThisGenBestUnit { get; private set; }
 
         protected override void Draw(GameTime gameTime)
         {
-            _renderer.RenderGame(gameTime);
+            _renderer.Render(gameTime);
             base.Draw(gameTime);
         }
 
         protected override void Initialize()
         {
+            base.Initialize();
+
+            _rules = new SnakeGameRules
+            {
+                FieldHeight = 21,
+                FieldWidth = 21,
+                MaxAITurns = 21 * 21,
+                SnakeGrowLength = 5,
+                SnakeStartLength = 10
+            };
+            Services.AddService(_rules as ISnakeGameRules);
+
             Services.AddService(new SnakeGraphics(this) as ISnakeGraphics);
+            Services.AddService(_renderer = new SnakeRenderer(this) as ISnakeRenderer);
+
+            ActiveGame = new SnakeGameSim(_rules);
 
             _renderer.Initialize();
 
             _lastTick = TimeSpan.Zero;
             Reset();
 
-            base.Initialize();
+            OnResize(this, EventArgs.Empty);
         }
 
         protected override void Update(GameTime gameTime)
@@ -109,7 +122,7 @@ namespace SnakeGame
                 UpdateEntities(diff);
 
                 if (!_player.IsHuman
-                    && (!ActiveGame.Alive || ActiveGame.TotalTurns == SnakeRules.MAX_AI_TURNS))
+                    && (!ActiveGame.Alive || ActiveGame.TotalTurns == _rules.MaxAITurns))
                 {
                     HandleAI();
                     Reset();
