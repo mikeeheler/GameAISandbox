@@ -56,8 +56,9 @@ namespace SnakeGame
             Point right = new Point(-forward.Y, forward.X);
             Point behind = new Point(-forward.X, -forward.Y);
 
-            // 3x8 matrix; each column encodes the data for a particular direction.
+            // 3x7 matrix; each column encodes the data for a particular direction.
             // i.e. forward: m[0,0] = apple, m[1,0] = snake, m[2,0] = wall
+            // data is returned as a column-major array
             return Look(_currentPosition, forward)
                 .Concat(Look(_currentPosition, forward + left))
                 .Concat(Look(_currentPosition, left))
@@ -91,7 +92,7 @@ namespace SnakeGame
             {
                 case TileState.Apple:
                     ApplesEaten++;
-                    SnakeSize += SnakeRules.GROW_LENGTH;
+                    SnakeSize += SnakeRules.SNAKE_GROW_LENGTH;
                     do { _applePosition = GetRandomPoint(); }
                     while (_applePosition == newPosition && GetTile(_applePosition) != TileState.Empty);
                     TurnsSinceEating = 0;
@@ -123,7 +124,7 @@ namespace SnakeGame
             _lastDirection = Point.Zero;
             _snake.Clear();
             _snake.Enqueue(_currentPosition);
-            SnakeSize = SnakeRules.START_LENGTH;
+            SnakeSize = SnakeRules.SNAKE_START_LENGTH;
             TotalTurns = 0;
             TurnsSinceEating = 0;
         }
@@ -151,33 +152,31 @@ namespace SnakeGame
             int distance = 0;
             bool snakeFound = false;
 
-        keepLooking:
-
-            lookPos += direction;
-            ++distance;
-
-            if (lookPos == _applePosition)
+            while (true)
             {
-                result[0] = Math.Sqrt(1.0 / distance);
-                goto keepLooking;
-            }
+                lookPos += direction;
+                ++distance;
 
-            if (!IsInBounds(lookPos))
-            {
-                // Sqrt to flatten out the curve a bit
-                result[2] = Math.Sqrt(1.0 / distance);
-                return result;
-            }
+                if (lookPos == _applePosition)
+                {
+                    result[0] = Math.Sqrt(1.0 / distance);
+                    continue;
+                }
 
-            // Only want distance to closest piece of snake, don't keep checking if it's found
-            if (!snakeFound && _snake.Contains(lookPos))
-            {
-                result[1] = Math.Sqrt(1.0 / distance);
-                snakeFound = true;
-            }
+                if (!IsInBounds(lookPos))
+                {
+                    // Sqrt to flatten out the curve a bit
+                    result[2] = Math.Sqrt(1.0 / distance);
+                    return result;
+                }
 
-            // Bite me
-            goto keepLooking;
+                // Only want distance to closest piece of snake, don't keep checking if it's found
+                if (!snakeFound && _snake.Contains(lookPos))
+                {
+                    result[1] = Math.Sqrt(1.0 / distance);
+                    snakeFound = true;
+                }
+            }
         }
     }
 }
