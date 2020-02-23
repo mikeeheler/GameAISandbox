@@ -10,7 +10,6 @@ namespace SnakeGame
 {
     public class SnakeGameSim
     {
-        private readonly ISnakeGameRules _gameRules;
         private readonly RandomSource _rng;
         private readonly Queue<Point> _snake;
 
@@ -20,7 +19,7 @@ namespace SnakeGame
 
         public SnakeGameSim(ISnakeGameRules gameRules)
         {
-            _gameRules = gameRules;
+            GameRules = gameRules;
             _rng = SnakeRandom.Default;
             _snake = new Queue<Point>();
             Reset();
@@ -29,6 +28,7 @@ namespace SnakeGame
         public bool Alive { get; private set; }
         public int ApplesEaten { get; private set; }
         public Point ApplePosition => _applePosition;
+        public ISnakeGameRules GameRules { get; }
         public IReadOnlyCollection<Point> Snake => _snake.Select(p => new Point(p.X, p.Y)).ToArray();
         public int SnakeSize { get; private set; }
         public int TotalTurns { get; private set; }
@@ -72,7 +72,7 @@ namespace SnakeGame
         }
 
         public bool IsInBounds(Point point)
-            => point.X >= 0 && point.X < _gameRules.FieldWidth && point.Y >= 0 && point.Y < _gameRules.FieldHeight;
+            => point.X >= 0 && point.X < GameRules.FieldWidth && point.Y >= 0 && point.Y < GameRules.FieldHeight;
 
         public bool IsLegalMove(PlayerMovement move)
             => GetDirection(move) + _lastDirection != Point.Zero; // The only illegal move is a 180
@@ -94,7 +94,7 @@ namespace SnakeGame
             {
                 case TileState.Apple:
                     ApplesEaten++;
-                    SnakeSize += _gameRules.SnakeGrowLength;
+                    SnakeSize += GameRules.SnakeGrowLength;
                     do { _applePosition = GetRandomPoint(); }
                     while (_applePosition == newPosition && GetTile(_applePosition) != TileState.Empty);
                     TurnsSinceEating = 0;
@@ -122,11 +122,11 @@ namespace SnakeGame
             Alive = true;
             _applePosition = GetRandomPoint();
             ApplesEaten = 0;
-            _currentPosition = new Point(_gameRules.FieldWidth / 2, _gameRules.FieldHeight / 2);
+            _currentPosition = new Point(GameRules.FieldWidth / 2, GameRules.FieldHeight / 2);
             _lastDirection = Point.Zero;
             _snake.Clear();
             _snake.Enqueue(_currentPosition);
-            SnakeSize = _gameRules.SnakeStartLength;
+            SnakeSize = GameRules.SnakeStartLength;
             TotalTurns = 0;
             TurnsSinceEating = 0;
         }
@@ -142,7 +142,7 @@ namespace SnakeGame
             };
 
         private Point GetRandomPoint()
-            => new Point(_rng.Next(_gameRules.FieldWidth), _rng.Next(_gameRules.FieldHeight));
+            => new Point(_rng.Next(GameRules.FieldWidth), _rng.Next(GameRules.FieldHeight));
 
         private double[] Look(Point point, Point direction)
         {
