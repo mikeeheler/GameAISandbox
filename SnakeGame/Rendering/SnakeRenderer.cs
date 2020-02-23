@@ -96,9 +96,14 @@ namespace SnakeGame
 
             _spriteBatch.End();
 
+            _frameCount++;
+
             TimeSpan timeSinceUpdate = gameTime.TotalGameTime - _lastStatsUpdate;
             if (timeSinceUpdate.TotalSeconds >= 5.0)
+            {
                 UpdateRenderStats(gameTime.TotalGameTime);
+                _lastStatsUpdate = gameTime.TotalGameTime;
+            }
         }
 
         public void OnWindowResize(Rectangle clientBounds)
@@ -106,6 +111,7 @@ namespace SnakeGame
             _fieldViewport.Location = new Point(
                 (clientBounds.Size.X - _fieldViewport.Size.X) / 2,
                 (clientBounds.Size.Y - _fieldViewport.Size.Y) / 2);
+            _statusHUD.OnWindowResize(clientBounds);
         }
 
         private Texture2D CreateFieldTexture(ISnakeGraphics graphics, int fieldWidth, int fieldHeight)
@@ -272,7 +278,6 @@ namespace SnakeGame
             TimeSpan timeDiff = gameTime - _lastStatsUpdate;
 
             _lastFrameCount = _frameCount;
-            _lastStatsUpdate = gameTime;
             _renderStats = new RenderStats
             {
                 FramesPerSecond = frameDiff / timeDiff.TotalSeconds
