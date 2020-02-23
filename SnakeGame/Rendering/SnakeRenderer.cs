@@ -99,7 +99,7 @@ namespace SnakeGame
             _frameCount++;
 
             TimeSpan timeSinceUpdate = gameTime.TotalGameTime - _lastStatsUpdate;
-            if (timeSinceUpdate.TotalSeconds >= 5.0)
+            if (timeSinceUpdate.TotalSeconds >= 1.0)
             {
                 UpdateRenderStats(gameTime.TotalGameTime);
                 _lastStatsUpdate = gameTime.TotalGameTime;

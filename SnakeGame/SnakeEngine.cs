@@ -289,7 +289,9 @@ namespace SnakeGame
 
         private void UpdateEntities(TimeSpan _)
         {
-            ActiveGame.Move(_player.GetMovement(ActiveGame));
+            PlayerMovement move = _player.GetMovement(ActiveGame);
+            if (ActiveGame.IsLegalMove(move))
+                ActiveGame.Move(move);
         }
 
         private class AIPlayerScore
