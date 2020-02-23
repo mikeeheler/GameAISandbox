@@ -70,12 +70,12 @@ namespace SnakeGame
             _brain.Mutate(mutationRate);
         }
 
-        private PlayerMovement GetNextMove(SnakeGameSim gameState)
+        private PlayerMovement GetNextMove(SnakeGameSim instance)
         {
-            double[] vision = gameState.GetVision();
+            double[] vision = instance.GetVision();
             double[] computeValues = new double[1 + vision.Length];
             Array.Copy(vision, 0, computeValues, 1, vision.Length);
-            computeValues[0] = (double)gameState.TurnsSinceEating / gameState.GameRules.MaxAITurns;
+            computeValues[0] = (double)instance.TurnsSinceEating / instance.GameRules.MaxAITurns;
 
             var result = _brain.Compute(computeValues);
             Decision = Vector<float>.Build.Dense(result);

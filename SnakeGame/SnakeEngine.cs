@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -19,13 +20,13 @@ namespace SnakeGame
         private readonly GraphicsDeviceManager _graphicsDeviceManager;
         private readonly Thread _keyPollThread;
         private readonly object _keySync;
+        private readonly ConcurrentQueue<Action> _mainThreadActions;
         private readonly HashSet<Keys> _pressedKeys;
-        private readonly RandomSource _rng;
+        private readonly RandomSource _random;
 
         private ISnakeRenderer _renderer;
         private ISnakeGameRules _rules;
 
-        private bool _graphicsDirty;
         private TimeSpan _lastTick;
         private bool _pollKeysEnabled;
         private bool _tickEnabled;
@@ -44,8 +45,8 @@ namespace SnakeGame
                 PreferMultiSampling = true,
                 SynchronizeWithVerticalRetrace = true
             };
-            _graphicsDirty = false;
-            _rng = SnakeRandom.Default;
+            _mainThreadActions = new ConcurrentQueue<Action>();
+            _random = SnakeRandom.Default;
 
             _keyPollThread = new Thread(new ThreadStart(PollKeys)) { IsBackground = true };
             _keySync = new object();
@@ -134,11 +135,8 @@ namespace SnakeGame
 
         protected override void Update(GameTime gameTime)
         {
-            if (_graphicsDirty)
-            {
-                _graphicsDeviceManager.ApplyChanges();
-                _graphicsDirty = false;
-            }
+            while (_mainThreadActions.TryDequeue(out Action action))
+                action.Invoke();
 
             TimeSpan diff = gameTime.TotalGameTime - _lastTick;
             if (!_tickEnabled || diff.TotalSeconds >= _tickRate)
@@ -211,7 +209,7 @@ namespace SnakeGame
                     // This should prune about half, with increasing likelihood of dying towards the bottom
                     // of the pile
                     double deathChance = (double)i / sorted.Count;
-                    if (_rng.NextDouble() < deathChance)
+                    if (_random.NextDouble() < deathChance)
                         continue;
 
                     _aiPlayers.Add(sorted[i]);
@@ -224,7 +222,7 @@ namespace SnakeGame
                 {
                     int index = 0;
                     double sum = 0.0;
-                    double roll = _rng.NextDouble() * oddsSum;
+                    double roll = _random.NextDouble() * oddsSum;
                     while (sum < roll && index <= parents.Count)
                         sum += parents[index++].Score;
                     var child = new AIPlayerScore
@@ -237,7 +235,7 @@ namespace SnakeGame
                 }
 
                 // Shuffle the deck
-                _aiPlayers = _aiPlayers.OrderBy(_ => _rng.Next()).ToList();
+                _aiPlayers = _aiPlayers.OrderBy(_ => _random.Next()).ToList();
                 foreach (var aiPlayer in _aiPlayers)
                     aiPlayer.Score = 0;
             }
@@ -255,9 +253,12 @@ namespace SnakeGame
             }
             else if (e.Key == Keys.Tab)
             {
-                _graphicsDeviceManager.SynchronizeWithVerticalRetrace = !_graphicsDeviceManager.SynchronizeWithVerticalRetrace;
-                _graphicsDirty = true;
-                _tickEnabled = _graphicsDeviceManager.SynchronizeWithVerticalRetrace;
+                _mainThreadActions.Enqueue(() =>
+                {
+                    _graphicsDeviceManager.SynchronizeWithVerticalRetrace = !_graphicsDeviceManager.SynchronizeWithVerticalRetrace;
+                    _graphicsDeviceManager.ApplyChanges();
+                    _tickEnabled = _graphicsDeviceManager.SynchronizeWithVerticalRetrace;
+                });
             }
             else if (e.Key == Keys.Subtract)
             {

@@ -10,7 +10,7 @@ namespace SnakeGame
 {
     public class SnakeGameSim
     {
-        private readonly RandomSource _rng;
+        private readonly RandomSource _random;
         private readonly Queue<Point> _snake;
 
         private Point _applePosition;
@@ -20,7 +20,7 @@ namespace SnakeGame
         public SnakeGameSim(ISnakeGameRules gameRules)
         {
             GameRules = gameRules;
-            _rng = SnakeRandom.Default;
+            _random = SnakeRandom.Default;
             _snake = new Queue<Point>();
             Reset();
         }
@@ -142,7 +142,7 @@ namespace SnakeGame
             };
 
         private Point GetRandomPoint()
-            => new Point(_rng.Next(GameRules.FieldWidth), _rng.Next(GameRules.FieldHeight));
+            => new Point(_random.Next(GameRules.FieldWidth), _random.Next(GameRules.FieldHeight));
 
         private double[] Look(Point point, Point direction)
         {

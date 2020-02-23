@@ -18,7 +18,7 @@ namespace SnakeGame
             _desiredMove = PlayerMovement.Right;
         }
 
-        public PlayerMovement GetMovement(SnakeGameSim snakeGameState)
+        public PlayerMovement GetMovement(SnakeGameSim instance)
         {
             return _desiredMove;
         }

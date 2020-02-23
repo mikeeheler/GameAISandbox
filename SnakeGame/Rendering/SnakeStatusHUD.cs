@@ -12,7 +12,7 @@ namespace SnakeGame
         private const string QUIT_MESSAGE = "Q to quit";
         private const string TRY_AGAIN_MESSAGE  = "SPACE to try again";
 
-        private readonly SnakeEngine _snakeGame;
+        private readonly SnakeEngine _engine;
 
         private SpriteFont _mainFont;
         private SpriteFont _smallFont;
@@ -22,44 +22,44 @@ namespace SnakeGame
         private Vector2 _quitMessagePos;
         private Vector2 _tryAgainMessagePos;
 
-        public SnakeStatusHUD(SnakeEngine game)
+        public SnakeStatusHUD(SnakeEngine engine)
         {
-            _snakeGame = game;
+            _engine = engine;
         }
 
-        public void Draw(SpriteBatch spriteBatch, SnakeGameSim gameSim, RenderStats renderStats)
+        public void Draw(SpriteBatch spriteBatch, SnakeGameSim instance, RenderStats renderStats)
         {
             spriteBatch.DrawString(_mainFont, QUIT_MESSAGE, _quitMessagePos, Color.LightGray);
 
             double fps = Math.Round(renderStats.FramesPerSecond, 2);
 
-            string scoreMessage = $"size: {gameSim.SnakeSize:N0}; fps: {fps:N0}";
+            string scoreMessage = $"size: {instance.SnakeSize:N0}; fps: {fps:N0}";
             Point scoreMessageSize = _mainFont.MeasureString(scoreMessage).ToPoint();
             Point scoreMessagePosition = _viewport.Size - scoreMessageSize;
             spriteBatch.DrawString(_mainFont, scoreMessage, scoreMessagePosition.ToVector2(), Color.LightGray);
 
-            if (_snakeGame.ActivePlayer.IsHuman && !gameSim.Alive)
+            if (_engine.ActivePlayer.IsHuman && !instance.Alive)
             {
                 spriteBatch.DrawString(_mainFont, GAME_OVER_MESSAGE, _gameOverMessagePos, Color.LightGoldenrodYellow);
                 spriteBatch.DrawString(_mainFont, TRY_AGAIN_MESSAGE, _tryAgainMessagePos, Color.LightGoldenrodYellow);
             }
 
             var stringBuilder = new StringBuilder()
-                .Append("gen: ").AppendFormat("{0:N0}", _snakeGame.Generation).Append("; ")
-                .Append("idx: ").AppendFormat("{0:N0}", _snakeGame.AIPlayerIndex).Append("; ")
-                .Append("id: ").AppendFormat("{0:N0}", _snakeGame.ActivePlayer.Id).Append("; ")
-                .Append("species: ").AppendFormat("{0:N0}", _snakeGame.ActivePlayer.SpeciesId).Append("; ")
-                .Append("games: ").AppendFormat("{0:N0}", _snakeGame.GamesPlayed).AppendLine()
-                .Append("score: ").AppendFormat("{0:N0}", _snakeGame.ActivePlayerScore).Append("; ")
-                .Append("this-gen: ").AppendFormat("{0:N0}", _snakeGame.ThisGenBestScore)
-                    .Append(" (").Append(_snakeGame.ThisGenBestUnit)
-                    .Append('/').Append(_snakeGame.ThisGenBestSpecies)
+                .Append("gen: ").AppendFormat("{0:N0}", _engine.Generation).Append("; ")
+                .Append("idx: ").AppendFormat("{0:N0}", _engine.AIPlayerIndex).Append("; ")
+                .Append("id: ").AppendFormat("{0:N0}", _engine.ActivePlayer.Id).Append("; ")
+                .Append("species: ").AppendFormat("{0:N0}", _engine.ActivePlayer.SpeciesId).Append("; ")
+                .Append("games: ").AppendFormat("{0:N0}", _engine.GamesPlayed).AppendLine()
+                .Append("score: ").AppendFormat("{0:N0}", _engine.ActivePlayerScore).Append("; ")
+                .Append("this-gen: ").AppendFormat("{0:N0}", _engine.ThisGenBestScore)
+                    .Append(" (").Append(_engine.ThisGenBestUnit)
+                    .Append('/').Append(_engine.ThisGenBestSpecies)
                     .Append("); ")
-                .Append("all-time: ").AppendFormat("{0:N0}", _snakeGame.AllTimeBestScore)
-                    .Append(" (").Append(_snakeGame.AllTimeBestUnit)
-                    .Append('/').Append(_snakeGame.AllTimeBestSpecies)
+                .Append("all-time: ").AppendFormat("{0:N0}", _engine.AllTimeBestScore)
+                    .Append(" (").Append(_engine.AllTimeBestUnit)
+                    .Append('/').Append(_engine.AllTimeBestSpecies)
                     .AppendLine(") ")
-                .Append("brain: ").Append(GetBrainTypeName(_snakeGame.ActivePlayer.BrainType));
+                .Append("brain: ").Append(GetBrainTypeName(_engine.ActivePlayer.BrainType));
 
             spriteBatch.DrawString(_mainFont, stringBuilder, Vector2.Zero, Color.LightGray);
         }

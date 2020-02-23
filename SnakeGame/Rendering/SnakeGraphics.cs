@@ -8,16 +8,16 @@ namespace SnakeGame
 {
     public class SnakeGraphics : ISnakeGraphics
     {
-        private readonly SnakeEngine _game;
+        private readonly SnakeEngine _engine;
 
         private readonly Lazy<Texture2D> _appleTexture;
         private readonly Lazy<Texture2D> _arrowTexture;
         private readonly Lazy<SpriteFont> _defaultUIFont;
         private readonly Lazy<SpriteFont> _smallUIFont;
 
-        public SnakeGraphics(SnakeEngine game)
+        public SnakeGraphics(SnakeEngine engine)
         {
-            _game = game;
+            _engine = engine;
             _appleTexture = new Lazy<Texture2D>(() => LoadTexture("Textures/apple"), false);
             _arrowTexture = new Lazy<Texture2D>(() => LoadTexture("Textures/arrow"), false);
             _defaultUIFont = new Lazy<SpriteFont>(() => LoadFont("UIFont"), false);
@@ -42,22 +42,22 @@ namespace SnakeGame
                         image[(y * width) + x] = color;
                 }
             }
-            var result = new Texture2D(_game.GraphicsDevice, width, height);
+            var result = new Texture2D(_engine.GraphicsDevice, width, height);
             result.SetData(image);
             return result;
         }
 
         public Texture2D CreateFlatTexture(int width, int height, Color color)
         {
-            var result = new Texture2D(_game.GraphicsDevice, width, height);
+            var result = new Texture2D(_engine.GraphicsDevice, width, height);
             result.SetData(Enumerable.Repeat(color, height*width).ToArray());
             return result;
         }
 
         public SpriteFont LoadFont(string resourceName)
-            => _game.Content.Load<SpriteFont>(resourceName);
+            => _engine.Content.Load<SpriteFont>(resourceName);
 
         public Texture2D LoadTexture(string resourceName)
-            => _game.Content.Load<Texture2D>(resourceName);
+            => _engine.Content.Load<Texture2D>(resourceName);
     }
 }
