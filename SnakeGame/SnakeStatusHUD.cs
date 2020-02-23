@@ -6,7 +6,7 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace SnakeGame
 {
-    public class SnakeGameHUD : DrawableGameComponent
+    public class SnakeStatusHUD : DrawableGameComponent
     {
         private const string GAME_OVER_MESSAGE = "GAME OVER";
         private const string QUIT_MESSAGE = "Q to quit";
@@ -22,7 +22,7 @@ namespace SnakeGame
         private Vector2 _quitMessagePos;
         private Vector2 _tryAgainMessagePos;
 
-        public SnakeGameHUD(SnakeGame game) : base(game)
+        public SnakeStatusHUD(SnakeGame game) : base(game)
         {
             _snakeGame = game;
             game.Window.ClientSizeChanged += OnResize;
@@ -96,6 +96,8 @@ namespace SnakeGame
         {
             _mainFont = Game.Content.Load<SpriteFont>("UIFont");
             _smallFont = Game.Content.Load<SpriteFont>("UIFont-Small");
+
+            OnResize(this, EventArgs.Empty);
 
             base.LoadContent();
         }

@@ -130,7 +130,7 @@ namespace SnakeGame
 
         protected override void Initialize()
         {
-            Components.Add(new SnakeGameHUD(this));
+            Components.Add(new SnakeStatusHUD(this));
 
             _lastTick = TimeSpan.Zero;
             Reset();
