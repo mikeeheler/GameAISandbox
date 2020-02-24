@@ -10,6 +10,7 @@ namespace SnakeGame
 {
     public class AIPlayer : IPlayerController
     {
+        private static readonly byte[] _nameCharacterMap = GenerateNameCharacterMap();
         private static long _globalId = 0;
 
         private AIBrain _brain;
@@ -58,14 +59,17 @@ namespace SnakeGame
         public static AIPlayer Deserialize(Stream inputStream)
             => new AIPlayer(inputStream);
 
-        private static string GenerateSpeciesName()
-        {
-            int[] charmap = Enumerable.Range(48, 10)
+        private static byte[] GenerateNameCharacterMap()
+            => Enumerable.Range(48, 10)
                 .Concat(Enumerable.Range(65, 26))
                 .Concat(Enumerable.Range(97, 26))
+                .Select(Convert.ToByte)
                 .ToArray();
+
+        private static string GenerateSpeciesName()
+        {
             byte[] name = Enumerable.Range(0, 8)
-                .Select(_ => charmap[SnakeRandom.Default.Next(charmap.Length)])
+                .Select(_ => _nameCharacterMap[SnakeRandom.Default.Next(_nameCharacterMap.Length)])
                 .Select(Convert.ToByte)
                 .ToArray();
             return Encoding.ASCII.GetString(name);
@@ -162,7 +166,7 @@ namespace SnakeGame
                 double roll = SnakeRandom.Default.NextDouble() * totalSum;
                 double sum = 0.0;
                 int index = 0;
-                while (sum < roll && index < moves.Length)
+                while (sum <= roll && index < moves.Length)
                     sum += moves[index++].Item1;
                 move = moves[--index].Item2;
             }
