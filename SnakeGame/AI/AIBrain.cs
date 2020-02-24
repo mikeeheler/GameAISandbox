@@ -97,6 +97,8 @@ namespace SnakeGame
 
                 default: throw new ArgumentOutOfRangeException(nameof(breedingMode));
             }
+
+            Compute(Enumerable.Repeat(0.0, InputSize).ToArray());
         }
 
         private AIBrain(Stream inputStream)
@@ -106,6 +108,21 @@ namespace SnakeGame
             InputSize = reader.ReadInt32();
             HiddenSize = reader.ReadInt32();
             OutputSize = reader.ReadInt32();
+
+            double[] ReadDoubleArray(int size)
+                => Enumerable.Range(0, size).Select(_ => reader.ReadDouble()).ToArray();
+
+            double[] inputBiasData = ReadDoubleArray(HiddenSize);
+            double[] inputWeightsData = ReadDoubleArray(InputSize * HiddenSize);
+            double[] hiddenBiasData = ReadDoubleArray(OutputSize);
+            double[] hiddenWeightsData = ReadDoubleArray(HiddenSize * OutputSize);
+
+            _inputBias = Matrix<double>.Build.Dense(1, HiddenSize, inputBiasData);
+            _inputWeights = Matrix<double>.Build.Dense(InputSize, HiddenSize, inputWeightsData);
+            _hiddenBias = Matrix<double>.Build.Dense(1, OutputSize, hiddenBiasData);
+            _hiddenWeights = Matrix<double>.Build.Dense(HiddenSize, OutputSize, hiddenWeightsData);
+
+            Compute(Enumerable.Repeat(0.0, InputSize).ToArray());
         }
 
         public AIBrainType BrainType { get; }

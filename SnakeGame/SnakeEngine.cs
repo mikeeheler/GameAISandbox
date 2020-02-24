@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 
 using MathNet.Numerics.Random;
@@ -17,7 +17,6 @@ namespace SnakeGame
     {
         private const int GAMES_PER_GENERATION = 100;
         private const double MUTATION_RATE = 0.40;
-        private const int POPULATION_SIZE = 100;
 
         private readonly GraphicsDeviceManager _graphicsDeviceManager;
         private readonly Thread _keyPollThread;
@@ -49,16 +48,19 @@ namespace SnakeGame
             };
             _mainThreadActions = new ConcurrentQueue<Action>();
             _random = SnakeRandom.Default;
+            PopulationSize = 100;
 
             _keyPollThread = new Thread(new ThreadStart(PollKeys)) { IsBackground = true };
             _keySync = new object();
             _pollKeysEnabled = true;
             _pressedKeys = new HashSet<Keys>(1024);
 
-            _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
+            // _aiPlayers = GenerateAIPlayers(POPULATION_SIZE).ToList();
+            _aiPlayers = LoadAIFromJson(Path.Combine("Data", "test.json"));
             AIPlayerIndex = 0;
             GamesPlayed = 0;
             Generation = 0;
+
             AllTimeBestScore = 0;
             AllTimeBestSpecies = "";
             AllTimeBestUnit = 0;
@@ -87,6 +89,7 @@ namespace SnakeGame
         public int AllTimeBestUnit { get; private set; }
         public int GamesPlayed { get; private set; }
         public int Generation { get; private set; }
+        public int PopulationSize { get; private set; }
         public int ThisGenBestScore { get; private set; }
         public string ThisGenBestSpecies { get; private set; }
         public int ThisGenBestUnit { get; private set; }
@@ -140,6 +143,7 @@ namespace SnakeGame
 
         protected override void Update(GameTime gameTime)
         {
+            /*
             Stopwatch timer = Stopwatch.StartNew();
             var populations = Enumerable.Range(0, Environment.ProcessorCount)
                 .Select(index =>
@@ -148,10 +152,10 @@ namespace SnakeGame
                     void RunSim()
                     {
                         int populationIndex = index;
-                        Console.WriteLine($"Population {populationIndex} running...");
+                        Console.WriteLine($"{Thread.CurrentThread.ManagedThreadId} Population {populationIndex} running...");
                         population.Initialize();
                         population.Run(this);
-                        Console.WriteLine($"Population {populationIndex} done.");
+                        Console.WriteLine($"{Thread.CurrentThread.ManagedThreadId} Population {populationIndex} done.");
                     }
                     var thread = new Thread(new ThreadStart(RunSim)) { IsBackground = true };
                     return (thread, population);
@@ -174,7 +178,9 @@ namespace SnakeGame
                 var fileInfo = new FileInfo(Path.Combine(dataInfo.FullName, $"pop{popIndex}.json"));
                 using var writer = fileInfo.CreateText();
                 writer.WriteLine("[");
-                var players = populations[popIndex].population.GetPlayers();
+                var players = populations[popIndex].population.GetPlayers()
+                    .OrderByDescending(x => x.Score)
+                    .ToArray();
                 for (int playerIndex = 0; playerIndex < players.Length; playerIndex++)
                 {
                     var player = players[playerIndex].Player;
@@ -185,7 +191,7 @@ namespace SnakeGame
                         playerInfo.Directory.Refresh();
                     }
                     writer.WriteLine("  {");
-                    writer.WriteLine($"    \"DataFile\": \"{playerInfo.FullName}\",");
+                    writer.WriteLine($"    \"DataFile\": \"{playerInfo.FullName.Replace("\\", "\\\\")}\",");
                     writer.WriteLine($"    \"PlayerId\": \"{player.Id}\",");
                     writer.WriteLine($"    \"PlayerName\": \"{player.Name}\",");
                     writer.WriteLine($"    \"Score\": \"{players[playerIndex].Score}\",");
@@ -196,11 +202,10 @@ namespace SnakeGame
                 }
                 writer.WriteLine("]");
             }
+            */
 
             while (_mainThreadActions.TryDequeue(out Action action))
                 action.Invoke();
-
-            Exit();
 
             TimeSpan diff = gameTime.TotalGameTime - _lastTick;
             if (!_tickEnabled || diff.TotalSeconds >= _tickRate)
@@ -256,14 +261,18 @@ namespace SnakeGame
             AIPlayerIndex++;
             GamesPlayed = 0;
 
-            if (AIPlayerIndex == POPULATION_SIZE)
+            if (AIPlayerIndex == PopulationSize)
             {
                 AIPlayerIndex = 0;
                 Generation++;
+
                 ThisGenBestScore = 0;
                 ThisGenBestSpecies = "";
                 ThisGenBestUnit = 0;
 
+                _aiPlayers = _aiPlayers.OrderByDescending(p => p.Score).Select(p => { p.Score = 0; return p; }).ToList();
+
+                /*
                 var sorted = _aiPlayers.OrderByDescending(x => x.Score).ToList();
 
                 var genPath = new DirectoryInfo(Path.Combine("Data", "gen" + Generation));
@@ -280,7 +289,7 @@ namespace SnakeGame
                     sorted[i].Player.SerializeTo(outputStream);
                 }
 
-                _aiPlayers = new List<AIPlayerScore>() { Capacity = POPULATION_SIZE };
+                _aiPlayers = new List<AIPlayerScore>() { Capacity = PopulationSize };
                 var parents = new List<AIPlayerScore>(sorted.Count);
                 long oddsSum = 0;
                 for (int i = 0; i < sorted.Count; ++i)
@@ -297,7 +306,7 @@ namespace SnakeGame
                 }
 
                 // Now select parents to breed from. The top entities have the best chance of breeding.
-                while (_aiPlayers.Count < POPULATION_SIZE)
+                while (_aiPlayers.Count < PopulationSize)
                 {
                     int index = 0;
                     double sum = 0.0;
@@ -317,6 +326,7 @@ namespace SnakeGame
                 _aiPlayers = _aiPlayers.OrderBy(_ => _random.Next()).ToList();
                 foreach (var aiPlayer in _aiPlayers)
                     aiPlayer.Score = 0;
+                */
             }
         }
 
@@ -379,6 +389,58 @@ namespace SnakeGame
                     }
                 }
             }
+        }
+
+        private List<AIPlayerScore> LoadAIFromJson(string filePath)
+        {
+            var result = new List<AIPlayerScore>(1000);
+            var foundingParents = new List<AIPlayer>(10);
+
+            var testDocument = JsonDocument.Parse(File.ReadAllBytes(filePath));
+            foreach (var element in testDocument.RootElement.EnumerateArray())
+            {
+                string dataFilePath = element.GetProperty("DataFile").GetString();
+                string name = element.GetProperty("PlayerName").GetString();
+                string speciesName = element.GetProperty("Species").GetString();
+                var parent = new AIPlayerScore
+                {
+                    Player = AIPlayer.Deserialize(File.OpenRead(dataFilePath)),
+                    Score = 0
+                };
+
+                foundingParents.Add(parent.Player);
+
+                result.Add(parent);
+                result.AddRange(Enumerable.Range(0, 9).Select(_ =>
+                {
+                    AIPlayer child = parent.Player.Clone();
+                    child.Mutate(MUTATION_RATE);
+                    return new AIPlayerScore
+                    {
+                        Player = child,
+                        Score = 0
+                    };
+                }));
+            }
+
+            foreach (var firstParent in foundingParents)
+            {
+                foreach (var secondParent in foundingParents.Where(p => p != firstParent))
+                {
+                    result.AddRange(Enumerable.Range(0, 5)
+                        .Select(_ => new AIPlayerScore
+                        {
+                            Player = firstParent.BreedWith(secondParent, AIBreedingMode.Mix),
+                            Score = 0
+                        }));
+                }
+            }
+
+            result.AddRange(GenerateAIPlayers(20));
+            PopulationSize = result.Count;
+
+            result.TrimExcess();
+            return result;
         }
 
         private void OnResize(object sender, EventArgs e)
