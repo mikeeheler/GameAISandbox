@@ -27,7 +27,7 @@ namespace SnakeGame
         public int BestScore { get; private set; }
 
         public (AIPlayer Player, int Score)[] GetPlayers()
-            => _playerScores.Select((p, s) => (p.Player.Clone(), s)).ToArray();
+            => _playerScores.Select(playerScore => (playerScore.Player.Clone(), playerScore.Score)).ToArray();
 
         public void Initialize()
         {
@@ -43,12 +43,12 @@ namespace SnakeGame
         {
             var newPopulation = new List<PlayerScore>(PopulationSize);
             PlayerScore[] sorted = _playerScores.OrderByDescending(x => x.Score).ToArray();
-            double upperBound = (PopulationSize - 1) / PopulationSize;
+            double upperBound = (double)(PopulationSize - 1) / PopulationSize;
             int totalSum = 0;
             for (int i = 0; i < sorted.Length; i++)
             {
-                double killProbability = i / sorted.Length;
-                if (_rng.NextDouble() * upperBound >= killProbability)
+                double killProbability = (double)i / sorted.Length;
+                if (_rng.NextDouble() * upperBound < killProbability)
                 {
                     newPopulation.Add(sorted[i]);
                     totalSum += sorted[i].Score;
@@ -61,14 +61,15 @@ namespace SnakeGame
             {
                 int index = 0;
                 int sum = 0;
-                while (sum < totalSum && index < parents.Count)
+                int roll = _rng.Next() % totalSum;
+                while (sum <= roll && index < parents.Count)
                     sum += parents[index++].Score;
-                double mutationRate = _rng.NextDouble() * 0.25;
                 var child = new PlayerScore
                 {
                     Player = parents[--index].Player.Clone(),
                     Score = 0
                 };
+                double mutationRate = (_rng.NextDouble() * 0.15) + 0.1;
                 child.Player.Mutate(mutationRate);
                 newPopulation.Add(child);
             }
@@ -79,8 +80,9 @@ namespace SnakeGame
 
         public void Run(SnakeEngine engine)
         {
+            const int GENERATIONS_TO_SIM = 100;
             var results = new List<PlayerGameSet>(_playerScores.Count);
-            for (int i = 0; i < 100; ++i)
+            for (int iter = 0; iter < GENERATIONS_TO_SIM; ++iter)
             {
                 foreach (var playerScore in _playerScores)
                 {
@@ -111,7 +113,7 @@ namespace SnakeGame
                     }
                 }
 
-                if (i < 99)
+                if (iter < (GENERATIONS_TO_SIM - 1))
                     RankAndMutate();
             }
         }
