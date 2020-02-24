@@ -2,45 +2,141 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-using Microsoft.Xna.Framework;
+using MathNet.Numerics.Random;
 
 namespace SnakeGame
 {
     public class SnakeAIPopulation
     {
-        private readonly List<PlayerGame> _players;
+        private readonly List<PlayerScore> _playerScores;
+        private readonly RandomSource _rng;
 
-        public SnakeAIPopulation(
-            int gamesPerGeneration,
-            double mutationRate,
-            int populationSize)
+        public SnakeAIPopulation(int gamesPerGeneration, int populationSize)
         {
             GamesPerGeneration = gamesPerGeneration;
-            MutationRate = mutationRate;
             PopulationSize = populationSize;
 
-            _players = new List<PlayerGame>(populationSize);
+            _playerScores = new List<PlayerScore>(populationSize);
+            _rng = SnakeRandom.Default;
         }
 
         public int GamesPerGeneration { get; }
-        public double MutationRate { get; }
         public int PopulationSize { get; }
 
-        public void Initialize(SnakeEngine engine)
+        public AIPlayer BestPlayer { get; private set; }
+        public int BestScore { get; private set; }
+
+        public (AIPlayer Player, int Score)[] GetPlayers()
+            => _playerScores.Select((p, s) => (p.Player.Clone(), s)).ToArray();
+
+        public void Initialize()
         {
-            _players.Clear();
-            _players.AddRange(Enumerable.Range(0, PopulationSize)
-                .Select(_ => new PlayerGame
-                {
-                    Player = new AIPlayer(),
-                    Instance = engine.CreateGame()
-                }));
+            _playerScores.Clear();
+            _playerScores.AddRange(Enumerable.Range(0, PopulationSize)
+                .Select(_ => CreatePlayerScore()));
+
+            BestPlayer = _playerScores[0].Player;
+            BestScore = 0;
         }
 
-        private class PlayerGame
+        public void RankAndMutate()
+        {
+            var newPopulation = new List<PlayerScore>(PopulationSize);
+            PlayerScore[] sorted = _playerScores.OrderByDescending(x => x.Score).ToArray();
+            double upperBound = (PopulationSize - 1) / PopulationSize;
+            int totalSum = 0;
+            for (int i = 0; i < sorted.Length; i++)
+            {
+                double killProbability = i / sorted.Length;
+                if (_rng.NextDouble() * upperBound >= killProbability)
+                {
+                    newPopulation.Add(sorted[i]);
+                    totalSum += sorted[i].Score;
+                }
+            }
+
+            List<PlayerScore> parents = newPopulation.ToList();
+
+            while (newPopulation.Count < PopulationSize)
+            {
+                int index = 0;
+                int sum = 0;
+                while (sum < totalSum && index < parents.Count)
+                    sum += parents[index++].Score;
+                double mutationRate = _rng.NextDouble() * 0.25;
+                var child = new PlayerScore
+                {
+                    Player = parents[--index].Player.Clone(),
+                    Score = 0
+                };
+                child.Player.Mutate(mutationRate);
+                newPopulation.Add(child);
+            }
+
+            _playerScores.Clear();
+            _playerScores.AddRange(newPopulation.OrderBy(_ => _rng.Next()));
+        }
+
+        public void Run(SnakeEngine engine)
+        {
+            var results = new List<PlayerGameSet>(_playerScores.Count);
+            for (int i = 0; i < 100; ++i)
+            {
+                foreach (var playerScore in _playerScores)
+                {
+                    var player = playerScore.Player;
+                    playerScore.Score = 0;
+
+                    var gameSet = new PlayerGameSet
+                    {
+                        Player = playerScore.Player,
+                        Games = Enumerable.Range(0, GamesPerGeneration)
+                            .Select(_ => engine.CreateGame())
+                            .ToList()
+                    };
+
+                    foreach (SnakeGameSim game in gameSet.Games)
+                    {
+                        while (game.Alive && game.TurnsSinceEating < game.GameRules.MaxAITurns)
+                        {
+                            game.Move(player.GetMovement(game));
+                        }
+                        playerScore.Score += game.ApplesEaten;
+
+                        if (playerScore.Score > BestScore)
+                        {
+                            BestPlayer = player;
+                            BestScore = playerScore.Score;
+                        }
+                    }
+                }
+
+                if (i < 99)
+                    RankAndMutate();
+            }
+        }
+
+        private PlayerScore CreatePlayerScore()
+        {
+            var result = new PlayerScore
+            {
+                Player = new AIPlayer(),
+                Score = 0
+            };
+            result.Player.Initialize();
+            return result;
+        }
+
+        private class PlayerScore
         {
             public AIPlayer Player { get; set; }
-            public SnakeGameSim Instance { get; set; }
+            public int Score { get; set; }
+        }
+
+        private class PlayerGameSet
+        {
+            public AIPlayer Player { get; set; }
+            public ICollection<SnakeGameSim> Games { get; set; }
         }
     }
 }

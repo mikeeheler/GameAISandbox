@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -106,6 +107,7 @@ namespace SnakeGame
         {
             base.Initialize();
 
+            _lastTick = TimeSpan.Zero;
             _rules = new SnakeGameRules
             {
                 FieldHeight = 21,
@@ -122,10 +124,7 @@ namespace SnakeGame
             ActiveGame = new SnakeGameSim(_rules);
 
             _renderer.Initialize();
-
-            _lastTick = TimeSpan.Zero;
             Reset();
-
             OnResize(this, EventArgs.Empty);
 
             _keyPollThread.Start();
@@ -141,8 +140,67 @@ namespace SnakeGame
 
         protected override void Update(GameTime gameTime)
         {
+            Stopwatch timer = Stopwatch.StartNew();
+            var populations = Enumerable.Range(0, Environment.ProcessorCount)
+                .Select(index =>
+                {
+                    var population = new SnakeAIPopulation(100, 750);
+                    void RunSim()
+                    {
+                        int populationIndex = index;
+                        Console.WriteLine($"Population {populationIndex} running...");
+                        population.Initialize();
+                        population.Run(this);
+                        Console.WriteLine($"Population {populationIndex} done.");
+                    }
+                    var thread = new Thread(new ThreadStart(RunSim)) { IsBackground = true };
+                    return (thread, population);
+                })
+                .ToArray();
+            foreach (var (thread, population) in populations)
+            {
+                thread.Start();
+            }
+            foreach (var (thread, population) in populations)
+            {
+                thread.Join();
+            }
+            Console.WriteLine("Completed in " + timer.Elapsed);
+
+            var dataInfo = new DirectoryInfo("Data");
+            if (!dataInfo.Exists) { dataInfo.Create(); dataInfo.Refresh(); }
+            for (int popIndex = 0; popIndex < populations.Length; popIndex++)
+            {
+                var fileInfo = new FileInfo(Path.Combine(dataInfo.FullName, $"pop{popIndex}.json"));
+                using var writer = fileInfo.CreateText();
+                writer.WriteLine("[");
+                var players = populations[popIndex].population.GetPlayers();
+                for (int playerIndex = 0; playerIndex < players.Length; playerIndex++)
+                {
+                    var player = players[playerIndex].Player;
+                    var playerInfo = new FileInfo(Path.Combine(dataInfo.FullName, $"pop{popIndex}", $"player{playerIndex}.bin"));
+                    if (!playerInfo.Directory.Exists)
+                    {
+                        playerInfo.Directory.Create();
+                        playerInfo.Directory.Refresh();
+                    }
+                    writer.WriteLine("  {");
+                    writer.WriteLine($"    \"DataFile\": \"{playerInfo.FullName}\",");
+                    writer.WriteLine($"    \"PlayerId\": \"{player.Id}\",");
+                    writer.WriteLine($"    \"PlayerName\": \"{player.Name}\",");
+                    writer.WriteLine($"    \"Score\": \"{players[playerIndex].Score}\",");
+                    writer.WriteLine($"    \"Species\": \"{player.SpeciesName}\"");
+                    writer.WriteLine(playerIndex == players.Length - 1 ? "  }" : "  },");
+
+                    player.SerializeTo(playerInfo.Create());
+                }
+                writer.WriteLine("]");
+            }
+
             while (_mainThreadActions.TryDequeue(out Action action))
                 action.Invoke();
+
+            Exit();
 
             TimeSpan diff = gameTime.TotalGameTime - _lastTick;
             if (!_tickEnabled || diff.TotalSeconds >= _tickRate)
