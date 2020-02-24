@@ -70,7 +70,6 @@ namespace SnakeGame
         {
             byte[] name = Enumerable.Range(0, 8)
                 .Select(_ => _nameCharacterMap[SnakeRandom.Default.Next(_nameCharacterMap.Length)])
-                .Select(Convert.ToByte)
                 .ToArray();
             return Encoding.ASCII.GetString(name);
         }
